@@ -1,5 +1,5 @@
 #include "utils.hpp"
-
+#include <string>
 std::map<String, String> deserializeKeyValue(const String &url,
                                              const String elementSeparator,
                                              const String lineSeparator)
