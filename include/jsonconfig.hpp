@@ -5,7 +5,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
-#include <LittleFS.h>
 #include <map>
 
 #define DEFAULT_AP_CHANNEL 4

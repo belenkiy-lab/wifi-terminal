@@ -198,10 +198,10 @@ bool JSONConfig::load(Configuration &data, File &configFile, size_t size)
 bool JSONConfig::read(const String &configFileName, Configuration &config, size_t size)
 {
     bool success = false;
-    if (!LittleFS.exists(configFileName))
+    if (!SPIFFS.exists(configFileName))
     {
         logger->println("creating default configuration file");
-        File configFile = LittleFS.open(configFileName, "w");
+        File configFile = SPIFFS.open(configFileName, "w");
         success = JSONConfig::save(config, configFile, size);
         configFile.close();
     }
@@ -211,7 +211,7 @@ bool JSONConfig::read(const String &configFileName, Configuration &config, size_
     }
     if (success)
     {
-        File configFile = LittleFS.open(configFileName, "r");
+        File configFile = SPIFFS.open(configFileName, "r");
         success = JSONConfig::load(config, configFile, size);
         configFile.close();
     }
@@ -220,7 +220,7 @@ bool JSONConfig::read(const String &configFileName, Configuration &config, size_
 bool JSONConfig::write(const String &configFileName, Configuration &config, size_t size)
 {
     bool success = false;
-    File configFile = LittleFS.open(configFileName, "w");
+    File configFile = SPIFFS.open(configFileName, "w");
     success = JSONConfig::save(config, configFile, size);
     configFile.close();
 
