@@ -261,7 +261,7 @@
             <h2></h2>
         </div>
         <div class="footer">
-            <span>Belenkiy © 2023</span>
+            <span id="uptime">Uptime: --</span>&nbsp;&nbsp;&nbsp;<span>Belenkiy © 2023</span>
         </div>
     </div>
     <script>
@@ -269,6 +269,30 @@
             let element = document.getElementById(id);
             element.value = valueToSelect;
         }
+
+        function formatUptime(totalSeconds) {
+            let days = Math.floor(totalSeconds / 86400);
+            let hours = Math.floor((totalSeconds % 86400) / 3600);
+            let minutes = Math.floor((totalSeconds % 3600) / 60);
+            let seconds = totalSeconds % 60;
+            return days + "d " +
+                String(hours).padStart(2, "0") + ":" +
+                String(minutes).padStart(2, "0") + ":" +
+                String(seconds).padStart(2, "0");
+        }
+
+        function updateUptime() {
+            fetch("status", { cache: "no-store" })
+                .then(function (response) { return response.json(); })
+                .then(function (status) {
+                    document.getElementById("uptime").textContent =
+                        "Uptime: " + formatUptime(status.uptime);
+                })
+                .catch(function () {
+                    document.getElementById("uptime").textContent = "Uptime: unavailable";
+                });
+        }
+
         fetch("configure").then(function (response) {
             response.text().then(function (text) {
                 let settings = JSON.parse(text);
@@ -281,6 +305,9 @@
                 selectElement("address", settings.address);
             });
         });
+
+        updateUptime();
+        setInterval(updateUptime, 1000);
     </script>
 </body>
 
