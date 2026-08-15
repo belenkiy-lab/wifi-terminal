@@ -35,6 +35,7 @@ static const char FTP_PASSWORD_[] PROGMEM = "admin";
 const IPAddress DEFAULT_AP_GATEWAY(0, 0, 0, 0);
 const IPAddress DEFAULT_AP_MASK(255, 255, 255, 0);
 const size_t STACK_MAX_SIZE = 512;
+const size_t TCP_TO_SERIAL_MAX_PER_LOOP = 64;
 #define DEFAULT_TERMINAL_SERVER_PORT 23
 #define WEB_SERVER_PORT 80
 #define DNS_SERVER_PORT 53
