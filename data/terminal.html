@@ -64,13 +64,34 @@
     <script src="addon-fit.js"></script>
     <script>
         const WEBSOCKET_PORT = 81;
+        const TERMINAL_SCROLLBACK_KEY = 'webTerminalScrollback';
+        const TERMINAL_SCROLLBACK_DEFAULT = 1000;
+        const TERMINAL_SCROLLBACK_MAX = 10000;
         const statusElement = document.getElementById('status');
         const encoder = new TextEncoder();
+
+        function loadScrollback() {
+            try {
+                const stored = localStorage.getItem(TERMINAL_SCROLLBACK_KEY);
+                if (stored === null) {
+                    return TERMINAL_SCROLLBACK_DEFAULT;
+                }
+
+                const parsed = Number.parseInt(stored, 10);
+                if (!Number.isFinite(parsed)) {
+                    return TERMINAL_SCROLLBACK_DEFAULT;
+                }
+
+                return Math.max(0, Math.min(TERMINAL_SCROLLBACK_MAX, parsed));
+            } catch (error) {
+                return TERMINAL_SCROLLBACK_DEFAULT;
+            }
+        }
 
         const terminal = new Terminal({
             cursorBlink: true,
             convertEol: false,
-            scrollback: 1000,
+            scrollback: loadScrollback(),
             fontFamily: 'Consolas, "Courier New", monospace',
             fontSize: 14,
             theme: {
