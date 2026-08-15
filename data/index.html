@@ -134,7 +134,7 @@
             <h2></h2>
         </div>
         <div class="content">
-            <form method="POST" action="/save">
+            <form method="POST" action="/save" id="settings_form">
                 <p>
                 <h2><b>Serial port</b>
                     <hr align="center" size="1" />
@@ -252,8 +252,25 @@
                                 </tr>
                             </table>
                             </p>
+                            <p>
+                            <h2><b>Web terminal</b>
+                                <hr align="center" size="1" />
+                            </h2>
+                            </p>
+                            <p>
+                            <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td valign="top" width="30%">Scrollback lines:</td>
+                                    <td>&nbsp;</td>
+                                    <td valign="top">
+                                        <input type="number" min="0" max="10000" step="1"
+                                            id="terminal_scrollback" value="1000">
+                                    </td>
+                                </tr>
+                            </table>
+                            </p>
                             <br>
-                            <input type="button" value="RUN TERMINAL" id="start_terminal" onclick="location.href='/terminal.html'">
+                            <input type="button" value="RUN TERMINAL" id="start_terminal">
                             <input type="submit" value="SAVE AND REBOOT" id="save_and_reboot">
             </form>
         </div>
@@ -265,9 +282,45 @@
         </div>
     </div>
     <script>
+        const TERMINAL_SCROLLBACK_KEY = "webTerminalScrollback";
+        const TERMINAL_SCROLLBACK_DEFAULT = 1000;
+        const TERMINAL_SCROLLBACK_MAX = 10000;
+
         function selectElement(id, valueToSelect) {
             let element = document.getElementById(id);
             element.value = valueToSelect;
+        }
+
+        function normalizeScrollback(value) {
+            let parsed = Number.parseInt(value, 10);
+            if (!Number.isFinite(parsed)) {
+                return TERMINAL_SCROLLBACK_DEFAULT;
+            }
+            return Math.max(0, Math.min(TERMINAL_SCROLLBACK_MAX, parsed));
+        }
+
+        function loadWebTerminalScrollback() {
+            let value = TERMINAL_SCROLLBACK_DEFAULT;
+            try {
+                let stored = localStorage.getItem(TERMINAL_SCROLLBACK_KEY);
+                if (stored !== null) {
+                    value = normalizeScrollback(stored);
+                }
+            } catch (error) {
+                // localStorage may be unavailable; keep the default value.
+            }
+            document.getElementById("terminal_scrollback").value = value;
+        }
+
+        function saveWebTerminalScrollback() {
+            let input = document.getElementById("terminal_scrollback");
+            let value = normalizeScrollback(input.value);
+            input.value = value;
+            try {
+                localStorage.setItem(TERMINAL_SCROLLBACK_KEY, String(value));
+            } catch (error) {
+                // localStorage may be unavailable; terminal.html will use its default.
+            }
         }
 
         function formatUptime(totalSeconds) {
@@ -304,6 +357,15 @@
                 selectElement("channel", settings.channel);
                 selectElement("address", settings.address);
             });
+        });
+
+        loadWebTerminalScrollback();
+
+        document.getElementById("terminal_scrollback").addEventListener("change", saveWebTerminalScrollback);
+        document.getElementById("settings_form").addEventListener("submit", saveWebTerminalScrollback);
+        document.getElementById("start_terminal").addEventListener("click", function () {
+            saveWebTerminalScrollback();
+            location.href = "/terminal.html";
         });
 
         updateUptime();
