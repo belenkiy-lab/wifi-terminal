@@ -124,7 +124,7 @@ void Application::handleTerminalClient()
             _terminalClient.println("new client connected, current connection aborted");
             _terminalClient.stop();
         }
-        _terminalClient = _terminalServer->available();
+        _terminalClient = _terminalServer->accept();
         logger->println("Client connected to telnet server");
     }
     while (_terminalClient.available() && Serial.availableForWrite() > 0)
