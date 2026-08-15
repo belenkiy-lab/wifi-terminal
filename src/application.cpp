@@ -76,9 +76,9 @@ bool Application::handleFileRead(String path)
         path += "index.html";
 
     String contentType = getContentType(path);
-    if (SPIFFS.exists(path))
+    if (LittleFS.exists(path))
     {
-        File file = SPIFFS.open(path, "r");
+        File file = LittleFS.open(path, "r");
         _WebServer->streamFile(file, contentType);
         file.close();
 
@@ -199,7 +199,7 @@ void Application::initialize()
     logger->begin(DEFAULT_BAUD_LOGGER);
     logger->println(FPSTR(WELCOME_STRING));
 
-    if (!SPIFFS.begin())
+    if (!LittleFS.begin())
     {
         logger->println("failed to mount FS");
         halt();
