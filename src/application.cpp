@@ -164,35 +164,69 @@ void Application::handleTerminalClient()
         Serial.write(_terminalClient.read());
         tcpToSerial++;
     }
+}
+void Application::handleSerialInput()
+{
+    size_t bufferLen = std::min((size_t)Serial.available(), STACK_MAX_SIZE);
+    if (!bufferLen)
+        return;
 
-    size_t maxToTcp = 0;
-    if (_terminalClient)
+    if (_terminalClient.connected())
     {
-        size_t bytesCount = _terminalClient.availableForWrite();
-        if (bytesCount)
-        {
-            if (!maxToTcp)
-                maxToTcp = bytesCount;
-            else
-                maxToTcp = std::min(maxToTcp, bytesCount);
-        }
-        else
-            logger->println("client is congested");
+        int tcpAvailable = _terminalClient.availableForWrite();
+        if (tcpAvailable <= 0)
+            return;
+        bufferLen = std::min(bufferLen, static_cast<size_t>(tcpAvailable));
     }
-    size_t bufferLen = std::min((size_t)Serial.available(), maxToTcp);
-    bufferLen = std::min(bufferLen, STACK_MAX_SIZE);
-    if (bufferLen)
+
+    uint8_t buffer[STACK_MAX_SIZE];
+    size_t serialGotBytesCount = Serial.readBytes(buffer, bufferLen);
+    if (!serialGotBytesCount)
+        return;
+
+    if (_terminalClient.connected())
     {
-        uint8_t buffer[bufferLen];
-        size_t serialGotBytesCount = Serial.readBytes(buffer, bufferLen);
-        if (_terminalClient.availableForWrite() >= static_cast<int>(serialGotBytesCount))
+        size_t sent = _terminalClient.write(buffer, serialGotBytesCount);
+        if (sent != serialGotBytesCount)
         {
-            size_t sended = _terminalClient.write(buffer, serialGotBytesCount);
-            if (sended != bufferLen)
+            logger->printf("tcp write mismatch: serial-read:%zd tcp-write:%zd\n",
+                           serialGotBytesCount, sent);
+        }
+    }
+
+    static String line;
+    static bool previousWasCR = false;
+
+    for (size_t i = 0; i < serialGotBytesCount; i++)
+    {
+        char chr = static_cast<char>(buffer[i]);
+
+        if (chr == '\r')
+        {
+            _webSockServer->broadcastTXT(line);
+            line.clear();
+            previousWasCR = true;
+            continue;
+        }
+
+        if (chr == '\n')
+        {
+            if (!previousWasCR)
             {
-                logger->printf("len mismatch: available:%zd serial-read:%zd tcp-write:%zd\n",
-                               bufferLen, serialGotBytesCount, sended);
+                _webSockServer->broadcastTXT(line);
+                line.clear();
             }
+            previousWasCR = false;
+            continue;
+        }
+
+        previousWasCR = false;
+        line += chr;
+
+        if (line.length() >= LINE_MAX)
+        {
+            _webSockServer->broadcastTXT(line);
+            line.clear();
         }
     }
 }
@@ -256,62 +290,5 @@ void Application::mainloop()
     _FTPServer->handleFTP();
     _WebServer->handleClient();
     this->handleTerminalClient();
-    this->handleWebConsole();
-}
-void Application::handleWebConsole()
-{
-    if(_terminalClient.connected())
-    {
-        if (!_terminalClientAlreadyConnected)
-        {
-            _terminalClientAlreadyConnected = true;
-            _webSockServer->broadcastTXT(
-                "[[;red;]terminal client connected]");
-        }
-        return; /* exit */
-    }
-    else {
-        if(_terminalClientAlreadyConnected)
-        {
-            _terminalClientAlreadyConnected = false;
-            _webSockServer->broadcastTXT(
-                "[[;red;]terminal client disconnected]");
-        }
-    }
-
-    static String line;
-    static bool previousWasCR = false;
-
-    while(Serial.available())
-    {
-        char chr = Serial.read();
-
-        if (chr == '\r')
-        {
-            _webSockServer->broadcastTXT(line);
-            line.clear();
-            previousWasCR = true;
-            continue;
-        }
-
-        if (chr == '\n')
-        {
-            if (!previousWasCR)
-            {
-                _webSockServer->broadcastTXT(line);
-                line.clear();
-            }
-            previousWasCR = false;
-            continue;
-        }
-
-        previousWasCR = false;
-        line += chr;
-
-        if (line.length() >= LINE_MAX)
-        {
-            _webSockServer->broadcastTXT(line);
-            line.clear();
-        }
-    }
+    this->handleSerialInput();
 }
