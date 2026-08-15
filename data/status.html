@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wireless Terminal - Status</title>
+    <style>
+        :root { color-scheme:dark; --bg:#0b0d10; --panel:#14181d; --border:#2a3038; --text:#e8edf2; --muted:#8d98a5; --accent:#2ea8ff; }
+        * { box-sizing:border-box; }
+        html, body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family:Inter,Segoe UI,Arial,sans-serif; }
+        header { height:54px; display:flex; align-items:center; justify-content:space-between; padding:0 24px; border-bottom:1px solid var(--border); background:#111419; }
+        .brand { font-size:17px; font-weight:700; letter-spacing:.2px; }
+        nav { display:flex; gap:6px; }
+        nav a { color:#aab4bf; text-decoration:none; padding:8px 11px; border-radius:7px; font-size:14px; }
+        nav a:hover, nav a.active { color:#fff; background:#252b33; }
+        main { width:min(760px, calc(100% - 32px)); margin:36px auto; }
+        .title { margin-bottom:18px; }
+        .title h1 { margin:0 0 6px; font-size:28px; }
+        .title p { margin:0; color:var(--muted); font-size:14px; }
+        .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.18); }
+        .row { display:grid; grid-template-columns:180px 1fr; gap:20px; padding:18px 20px; border-bottom:1px solid var(--border); align-items:center; }
+        .row:last-child { border-bottom:0; }
+        .label { color:var(--muted); font-size:14px; }
+        .value { font-family:Consolas,"Courier New",monospace; font-size:15px; overflow-wrap:anywhere; }
+        .online { color:#7fd47f; }
+        .error { color:#ff7777; }
+        .actions { margin-top:18px; display:flex; justify-content:center; }
+        .terminal { display:inline-flex; align-items:center; justify-content:center; min-width:220px; padding:13px 24px; border-radius:9px; text-decoration:none; color:#fff; background:var(--accent); font-weight:700; }
+        .terminal:hover { filter:brightness(1.08); }
+        @media(max-width:560px) {
+            header { padding:0 12px; }
+            .brand { font-size:15px; }
+            nav a { padding:7px 8px; }
+            main { margin:24px auto; }
+            .row { grid-template-columns:1fr; gap:7px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">Wireless Terminal</div>
+        <nav>
+            <a href="/">Settings</a>
+            <a href="/terminal.html">Terminal</a>
+            <a href="/status.html" class="active">Status</a>
+        </nav>
+    </header>
+    <main>
+        <div class="title">
+            <h1>Device status</h1>
+            <p>Live status from the wireless terminal.</p>
+        </div>
+        <section class="card">
+            <div class="row"><div class="label">Connection</div><div class="value" id="connection">Loading...</div></div>
+            <div class="row"><div class="label">Uptime</div><div class="value" id="uptime">--</div></div>
+            <div class="row"><div class="label">Reset reason</div><div class="value" id="reset_reason">--</div></div>
+        </section>
+        <div class="actions"><a class="terminal" href="/terminal.html">RUN TERMINAL</a></div>
+    </main>
+    <script>
+        function formatUptime(totalSeconds) {
+            const days = Math.floor(totalSeconds / 86400);
+            const hours = Math.floor((totalSeconds % 86400) / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return days + 'd ' + String(hours).padStart(2,'0') + ':' + String(minutes).padStart(2,'0') + ':' + String(seconds).padStart(2,'0');
+        }
+        function updateStatus() {
+            fetch('/status', {cache:'no-store'})
+                .then(function(response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
+                })
+                .then(function(status) {
+                    const connection = document.getElementById('connection');
+                    connection.textContent = 'Online';
+                    connection.className = 'value online';
+                    document.getElementById('uptime').textContent = formatUptime(status.uptime);
+                    document.getElementById('reset_reason').textContent = status.reset_reason || '--';
+                })
+                .catch(function() {
+                    const connection = document.getElementById('connection');
+                    connection.textContent = 'Unavailable';
+                    connection.className = 'value error';
+                });
+        }
+        updateStatus();
+        setInterval(updateStatus, 1000);
+    </script>
+</body>
+</html>
