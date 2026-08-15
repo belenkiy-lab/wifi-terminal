@@ -14,7 +14,7 @@
         #status.error { color:#ff7777; }
         #scrollback-controls { flex:0 0 auto; display:flex; align-items:center; gap:5px; color:#bbb; }
         #scrollback-input { box-sizing:border-box; width:76px; height:22px; padding:1px 4px; border:1px solid #555; background:#101010; color:#ddd; font:12px sans-serif; }
-        #scrollback-apply { height:22px; padding:1px 7px; border:1px solid #555; background:#2a2a2a; color:#ddd; cursor:pointer; font:12px sans-serif; }
+        #scrollback-apply, #terminal-clear { height:22px; padding:1px 7px; border:1px solid #555; background:#2a2a2a; color:#ddd; cursor:pointer; font:12px sans-serif; }
         #terminal-wrap { box-sizing:border-box; flex:1 1 auto; min-height:0; padding:6px; overflow:hidden; }
         #terminal { width:100%; height:100%; }
     </style>
@@ -26,6 +26,7 @@
             <label for="scrollback-input">Scrollback:</label>
             <input type="number" id="scrollback-input" min="0" max="10000" step="1" />
             <button type="button" id="scrollback-apply">Apply</button>
+            <button type="button" id="terminal-clear">Clear</button>
         </div>
     </div>
     <div id="terminal-wrap"><div id="terminal"></div></div>
@@ -39,6 +40,7 @@
         const statusElement = document.getElementById('status');
         const scrollbackInput = document.getElementById('scrollback-input');
         const scrollbackApply = document.getElementById('scrollback-apply');
+        const terminalClear = document.getElementById('terminal-clear');
         const encoder = new TextEncoder();
 
         function normalizeScrollback(value) {
@@ -104,6 +106,12 @@
         function sendBytes(bytes) {
             if (connection.readyState === WebSocket.OPEN) connection.send(bytes);
         }
+
+        terminalClear.addEventListener('click', function() {
+            terminal.clear();
+            sendBytes(new Uint8Array([0x0d]));
+            terminal.focus();
+        });
 
         connection.onopen = function() {
             setStatus('WebSocket: connected', 'connected');
