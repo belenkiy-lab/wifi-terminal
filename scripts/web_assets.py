@@ -86,7 +86,7 @@ def _download_fit_addon(data_dir):
     _write_if_changed(addon_path, addon)
 
 
-def ensure_xterm_assets(source, target, env):
+def ensure_xterm_assets(env):
     data_dir = env.subst("$PROJECT_DATA_DIR")
     os.makedirs(data_dir, exist_ok=True)
 
@@ -95,7 +95,9 @@ def ensure_xterm_assets(source, target, env):
     print("xterm.js web assets ready")
 
 
-# Hook the actual filesystem image file, not the buildfs alias. PlatformIO
-# resolves the alias after its dependencies, so a pre-action on "buildfs"
-# can run too late (after littlefs.bin has already been created).
-env.AddPreAction("$BUILD_DIR/littlefs.bin", ensure_xterm_assets)
+# This file is loaded as a PRE extra script. Prepare filesystem assets
+# immediately for filesystem targets, before PlatformIO creates littlefs.bin.
+# Do nothing during IDE integration dumps or normal firmware builds.
+filesystem_targets = {"buildfs", "uploadfs", "uploadfsota"}
+if not env.IsIntegrationDump() and filesystem_targets.intersection(COMMAND_LINE_TARGETS):
+    ensure_xterm_assets(env)
