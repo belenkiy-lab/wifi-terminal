@@ -2,3 +2,4 @@
 .vscode/
 data/xterm.js
 data/xterm.css
+data/addon-fit.js
