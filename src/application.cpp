@@ -150,7 +150,7 @@ void Application::handleTerminalClient()
     {
         uint8_t buffer[bufferLen];
         size_t serialGotBytesCount = Serial.readBytes(buffer, bufferLen);
-        if (_terminalClient.availableForWrite() >= serialGotBytesCount)
+        if (_terminalClient.availableForWrite() >= static_cast<int>(serialGotBytesCount))
         {
             size_t sended = _terminalClient.write(buffer, serialGotBytesCount);
             if (sended != bufferLen)
