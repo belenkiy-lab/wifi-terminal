@@ -115,6 +115,14 @@ void Application::handleGetSettings()
     serializeJson(doc, serializedData);
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_TEXT_PLAIN), serializedData);
 }
+void Application::handleGetStatus()
+{
+    String serializedData;
+    StaticJsonDocument<64> doc;
+    doc["uptime"] = millis() / 1000UL;
+    serializeJson(doc, serializedData);
+    _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), serializedData);
+}
 void Application::handleTerminalClient()
 {
     if (_terminalServer->hasClient())
@@ -202,6 +210,7 @@ void Application::initialize()
 
     _WebServer->on(FPSTR(HTTP_SAVE_LINK), [&]() mutable { this->handleSettingsSave(); });
     _WebServer->on(FPSTR(HTTP_CONF_LINK), [&]() mutable { this->handleGetSettings(); });
+    _WebServer->on(FPSTR(HTTP_STATUS_LINK), [&]() mutable { this->handleGetStatus(); });
     _WebServer->onNotFound([&]() mutable { handleNotFound();});
     _WebServer->begin();
 
