@@ -6,60 +6,29 @@
     <title>Wireless Terminal</title>
     <link rel="stylesheet" href="xterm.css" />
     <style>
-        html,
-        body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: #000;
-            color: #ddd;
-            font-family: sans-serif;
-        }
-
-        body {
-            display: flex;
-            flex-direction: column;
-        }
-
-        #status {
-            box-sizing: border-box;
-            min-height: 28px;
-            padding: 5px 8px;
-            flex: 0 0 auto;
-            background: #181818;
-            color: #aaa;
-            font: 12px/18px sans-serif;
-        }
-
-        #status.connected {
-            color: #7fd47f;
-        }
-
-        #status.error {
-            color: #ff7777;
-        }
-
-        #terminal-wrap {
-            box-sizing: border-box;
-            flex: 1 1 auto;
-            min-height: 0;
-            padding: 6px;
-            overflow: hidden;
-        }
-
-        #terminal {
-            width: 100%;
-            height: 100%;
-        }
+        html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#000; color:#ddd; font-family:sans-serif; }
+        body { display:flex; flex-direction:column; }
+        #topbar { box-sizing:border-box; min-height:28px; padding:4px 8px; flex:0 0 auto; display:flex; align-items:center; gap:12px; background:#181818; font:12px/18px sans-serif; }
+        #status { flex:1 1 auto; min-width:0; color:#aaa; }
+        #status.connected { color:#7fd47f; }
+        #status.error { color:#ff7777; }
+        #scrollback-controls { flex:0 0 auto; display:flex; align-items:center; gap:5px; color:#bbb; }
+        #scrollback-input { box-sizing:border-box; width:76px; height:22px; padding:1px 4px; border:1px solid #555; background:#101010; color:#ddd; font:12px sans-serif; }
+        #scrollback-apply { height:22px; padding:1px 7px; border:1px solid #555; background:#2a2a2a; color:#ddd; cursor:pointer; font:12px sans-serif; }
+        #terminal-wrap { box-sizing:border-box; flex:1 1 auto; min-height:0; padding:6px; overflow:hidden; }
+        #terminal { width:100%; height:100%; }
     </style>
 </head>
 <body>
-    <div id="status">WebSocket: connecting...</div>
-    <div id="terminal-wrap">
-        <div id="terminal"></div>
+    <div id="topbar">
+        <div id="status">WebSocket: connecting...</div>
+        <div id="scrollback-controls">
+            <label for="scrollback-input">Scrollback:</label>
+            <input type="number" id="scrollback-input" min="0" max="10000" step="1" />
+            <button type="button" id="scrollback-apply">Apply</button>
+        </div>
     </div>
-
+    <div id="terminal-wrap"><div id="terminal"></div></div>
     <script src="xterm.js"></script>
     <script src="addon-fit.js"></script>
     <script>
@@ -68,35 +37,38 @@
         const TERMINAL_SCROLLBACK_DEFAULT = 1000;
         const TERMINAL_SCROLLBACK_MAX = 10000;
         const statusElement = document.getElementById('status');
+        const scrollbackInput = document.getElementById('scrollback-input');
+        const scrollbackApply = document.getElementById('scrollback-apply');
         const encoder = new TextEncoder();
+
+        function normalizeScrollback(value) {
+            const parsed = Number.parseInt(value, 10);
+            return Number.isFinite(parsed) ? Math.max(0, Math.min(TERMINAL_SCROLLBACK_MAX, parsed)) : TERMINAL_SCROLLBACK_DEFAULT;
+        }
 
         function loadScrollback() {
             try {
                 const stored = localStorage.getItem(TERMINAL_SCROLLBACK_KEY);
-                if (stored === null) {
-                    return TERMINAL_SCROLLBACK_DEFAULT;
-                }
-
-                const parsed = Number.parseInt(stored, 10);
-                if (!Number.isFinite(parsed)) {
-                    return TERMINAL_SCROLLBACK_DEFAULT;
-                }
-
-                return Math.max(0, Math.min(TERMINAL_SCROLLBACK_MAX, parsed));
+                return stored === null ? TERMINAL_SCROLLBACK_DEFAULT : normalizeScrollback(stored);
             } catch (error) {
                 return TERMINAL_SCROLLBACK_DEFAULT;
             }
         }
 
+        function saveScrollback(value) {
+            try { localStorage.setItem(TERMINAL_SCROLLBACK_KEY, String(value)); } catch (error) {}
+        }
+
+        const initialScrollback = loadScrollback();
+        scrollbackInput.value = initialScrollback;
+
         const terminal = new Terminal({
-            cursorBlink: true,
-            convertEol: false,
-            scrollback: loadScrollback(),
-            fontFamily: 'Consolas, "Courier New", monospace',
-            fontSize: 14,
-            theme: {
-                background: '#000000'
-            }
+            cursorBlink:true,
+            convertEol:false,
+            scrollback:initialScrollback,
+            fontFamily:'Consolas, "Courier New", monospace',
+            fontSize:14,
+            theme:{ background:'#000000' }
         });
 
         const fitAddon = new FitAddon.FitAddon();
@@ -104,6 +76,22 @@
         terminal.open(document.getElementById('terminal'));
         fitAddon.fit();
         terminal.focus();
+
+        function applyScrollback() {
+            const value = normalizeScrollback(scrollbackInput.value);
+            scrollbackInput.value = value;
+            terminal.options.scrollback = value;
+            saveScrollback(value);
+            terminal.focus();
+        }
+
+        scrollbackApply.addEventListener('click', applyScrollback);
+        scrollbackInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applyScrollback();
+            }
+        });
 
         const connection = new WebSocket(`ws://${location.hostname}:${WEBSOCKET_PORT}/`);
         connection.binaryType = 'arraybuffer';
@@ -114,72 +102,46 @@
         }
 
         function sendBytes(bytes) {
-            if (connection.readyState === WebSocket.OPEN) {
-                connection.send(bytes);
-            }
+            if (connection.readyState === WebSocket.OPEN) connection.send(bytes);
         }
 
-        connection.onopen = function () {
+        connection.onopen = function() {
             setStatus('WebSocket: connected', 'connected');
             fitAddon.fit();
             terminal.focus();
         };
 
-        connection.onmessage = function (event) {
+        connection.onmessage = function(event) {
             if (event.data instanceof ArrayBuffer) {
                 terminal.write(new Uint8Array(event.data));
                 return;
             }
-
             if (event.data instanceof Blob) {
-                event.data.arrayBuffer().then(function (buffer) {
-                    terminal.write(new Uint8Array(buffer));
-                });
+                event.data.arrayBuffer().then(function(buffer) { terminal.write(new Uint8Array(buffer)); });
                 return;
             }
-
-            // Backward compatibility with text frames from older firmware.
             terminal.write(String(event.data));
         };
 
-        connection.onclose = function (event) {
-            setStatus(
-                `WebSocket: closed (code ${event.code}${event.reason ? ', ' + event.reason : ''})`,
-                event.wasClean ? '' : 'error'
-            );
+        connection.onclose = function(event) {
+            setStatus(`WebSocket: closed (code ${event.code}${event.reason ? ', ' + event.reason : ''})`, event.wasClean ? '' : 'error');
         };
 
-        connection.onerror = function () {
-            setStatus('WebSocket: connection error', 'error');
-        };
+        connection.onerror = function() { setStatus('WebSocket: connection error', 'error'); };
 
-        // xterm emits both keyboard input and terminal-generated replies here
-        // (for example device-status and cursor-position reports).
-        terminal.onData(function (data) {
-            sendBytes(encoder.encode(data));
-        });
-
-        // Legacy mouse-reporting modes can contain raw 8-bit values.
-        terminal.onBinary(function (data) {
+        terminal.onData(function(data) { sendBytes(encoder.encode(data)); });
+        terminal.onBinary(function(data) {
             const bytes = new Uint8Array(data.length);
-            for (let i = 0; i < data.length; i++) {
-                bytes[i] = data.charCodeAt(i) & 0xff;
-            }
+            for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 0xff;
             sendBytes(bytes);
         });
 
         let resizeTimer;
-        window.addEventListener('resize', function () {
+        window.addEventListener('resize', function() {
             clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(function () {
-                fitAddon.fit();
-                terminal.focus();
-            }, 50);
+            resizeTimer = setTimeout(function() { fitAddon.fit(); terminal.focus(); }, 50);
         });
-
-        window.addEventListener('focus', function () {
-            terminal.focus();
-        });
+        window.addEventListener('focus', function() { terminal.focus(); });
     </script>
 </body>
 </html>
