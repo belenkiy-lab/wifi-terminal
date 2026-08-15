@@ -12,7 +12,8 @@
         #status { flex:1 1 auto; min-width:0; color:#aaa; }
         #status.connected { color:#7fd47f; }
         #status.error { color:#ff7777; }
-        #scrollback-controls { flex:0 0 auto; display:flex; align-items:center; gap:5px; color:#bbb; }
+        #terminal-controls { flex:0 0 auto; display:flex; align-items:center; gap:5px; color:#bbb; }
+        #line-ending { height:22px; border:1px solid #555; background:#101010; color:#ddd; font:12px sans-serif; }
         #scrollback-input { box-sizing:border-box; width:76px; height:22px; padding:1px 4px; border:1px solid #555; background:#101010; color:#ddd; font:12px sans-serif; }
         #scrollback-apply, #terminal-clear { height:22px; padding:1px 7px; border:1px solid #555; background:#2a2a2a; color:#ddd; cursor:pointer; font:12px sans-serif; }
         #terminal-wrap { box-sizing:border-box; flex:1 1 auto; min-height:0; padding:6px; overflow:hidden; }
@@ -22,7 +23,13 @@
 <body>
     <div id="topbar">
         <div id="status">WebSocket: connecting...</div>
-        <div id="scrollback-controls">
+        <div id="terminal-controls">
+            <label for="line-ending">Line ending:</label>
+            <select id="line-ending">
+                <option value="CR">CR</option>
+                <option value="LF">LF</option>
+                <option value="CRLF">CR+LF</option>
+            </select>
             <label for="scrollback-input">Scrollback:</label>
             <input type="number" id="scrollback-input" min="0" max="10000" step="1" />
             <button type="button" id="scrollback-apply">Apply</button>
@@ -37,7 +44,10 @@
         const TERMINAL_SCROLLBACK_KEY = 'webTerminalScrollback';
         const TERMINAL_SCROLLBACK_DEFAULT = 1000;
         const TERMINAL_SCROLLBACK_MAX = 10000;
+        const TERMINAL_LINE_ENDING_KEY = 'webTerminalLineEnding';
+        const TERMINAL_LINE_ENDING_DEFAULT = 'CR';
         const statusElement = document.getElementById('status');
+        const lineEndingSelect = document.getElementById('line-ending');
         const scrollbackInput = document.getElementById('scrollback-input');
         const scrollbackApply = document.getElementById('scrollback-apply');
         const terminalClear = document.getElementById('terminal-clear');
@@ -61,8 +71,40 @@
             try { localStorage.setItem(TERMINAL_SCROLLBACK_KEY, String(value)); } catch (error) {}
         }
 
+        function normalizeLineEnding(value) {
+            return value === 'LF' || value === 'CRLF' ? value : 'CR';
+        }
+
+        function loadLineEnding() {
+            try {
+                const stored = localStorage.getItem(TERMINAL_LINE_ENDING_KEY);
+                return stored === null ? TERMINAL_LINE_ENDING_DEFAULT : normalizeLineEnding(stored);
+            } catch (error) {
+                return TERMINAL_LINE_ENDING_DEFAULT;
+            }
+        }
+
+        function saveLineEnding(value) {
+            try { localStorage.setItem(TERMINAL_LINE_ENDING_KEY, normalizeLineEnding(value)); } catch (error) {}
+        }
+
+        function sendEnter() {
+            switch (lineEndingSelect.value) {
+                case 'LF':
+                    sendBytes(new Uint8Array([0x0a]));
+                    break;
+                case 'CRLF':
+                    sendBytes(new Uint8Array([0x0d, 0x0a]));
+                    break;
+                default:
+                    sendBytes(new Uint8Array([0x0d]));
+                    break;
+            }
+        }
+
         const initialScrollback = loadScrollback();
         scrollbackInput.value = initialScrollback;
+        lineEndingSelect.value = loadLineEnding();
 
         const terminal = new Terminal({
             cursorBlink:true,
@@ -87,6 +129,11 @@
             terminal.focus();
         }
 
+        lineEndingSelect.addEventListener('change', function() {
+            saveLineEnding(lineEndingSelect.value);
+            terminal.focus();
+        });
+
         scrollbackApply.addEventListener('click', applyScrollback);
         scrollbackInput.addEventListener('keydown', function(event) {
             if (event.key === 'Enter') {
@@ -109,7 +156,6 @@
 
         terminalClear.addEventListener('click', function() {
             terminal.clear();
-            sendBytes(new Uint8Array([0x0d]));
             terminal.focus();
         });
 
@@ -137,7 +183,13 @@
 
         connection.onerror = function() { setStatus('WebSocket: connection error', 'error'); };
 
-        terminal.onData(function(data) { sendBytes(encoder.encode(data)); });
+        terminal.onData(function(data) {
+            if (data === '\r') {
+                sendEnter();
+                return;
+            }
+            sendBytes(encoder.encode(data));
+        });
         terminal.onBinary(function(data) {
             const bytes = new Uint8Array(data.length);
             for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 0xff;
