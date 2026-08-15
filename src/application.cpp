@@ -155,6 +155,7 @@ void Application::handleTerminalClient()
         }
         _terminalClient = _terminalServer->accept();
         logger->println("Client connected to telnet server");
+        Serial.write('\r');
     }
 
     size_t tcpToSerial = 0;
@@ -205,6 +206,7 @@ void Application::handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payl
     {
         logger->printf("ws client #%u connected from:", num);
         logger->println(_webSockServer->remoteIP(num));
+        Serial.write('\r');
     }
     else if (type == WStype_DISCONNECTED)
     {
