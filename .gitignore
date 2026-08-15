@@ -1,2 +1,4 @@
 .pio
 .vscode/
+data/xterm.js
+data/xterm.css
