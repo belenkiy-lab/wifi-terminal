@@ -60,13 +60,12 @@
                 if (command == "") {
                     connection.send(getNewLineSymbol())
                 } else {
-                    //connection.send(command + getNewLineSymbol());
                     let chunks = chunkString(command, CHUNK_SIZE);
                     for (let index = 0; index < chunks.length; index++) {
+                        let payload = chunks[index];
                         if (index + 1 == chunks.length)
-                            connection.send(command + getNewLineSymbol());
-                        else
-                            connection.send(command);
+                            payload += getNewLineSymbol();
+                        connection.send(payload);
                     }
                 }
             }, {
