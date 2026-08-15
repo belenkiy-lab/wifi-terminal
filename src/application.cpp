@@ -1,5 +1,25 @@
 #include "application.hpp"
 
+#ifdef NETWORK_ESP8266_ASYNC
+#undef NETWORK_ESP8266_ASYNC
+#endif
+#ifdef NETWORK_ESP8266
+#undef NETWORK_ESP8266
+#endif
+#ifdef NETWORK_W5100
+#undef NETWORK_W5100
+#endif
+#ifdef NETWORK_ENC28J60
+#undef NETWORK_ENC28J60
+#endif
+#ifdef NETWORK_ESP32
+#undef NETWORK_ESP32
+#endif
+#ifdef NETWORK_ESP32_ETH
+#undef NETWORK_ESP32_ETH
+#endif
+#include <SimpleFTPServer.h>
+
 void changeBuilinLedState()
 {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
@@ -223,7 +243,7 @@ void Application::initialize()
 
     _terminalServer->begin();
     _terminalServer->setNoDelay(true);
-    _FTPServer->begin(FPSTR(FTP_LOGIN_), FPSTR(FTP_PASSWORD_));
+    _FTPServer->begin(FTP_LOGIN_, FTP_PASSWORD_);
     _blinker->detach();
 
     _webSockServer->begin();
