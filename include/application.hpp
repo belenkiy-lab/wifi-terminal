@@ -23,8 +23,10 @@ static const char INDEX_PAGE_FILENAME[] PROGMEM = "index.html";
 static const char CONFIG_FILENAME[] PROGMEM = "/config.json";
 static const char HTTP_TEXT_PLAIN[] PROGMEM = "text/plain";
 static const char HTTP_TEXT_HTML[] PROGMEM = "text/html";
+static const char HTTP_APPLICATION_JSON[] PROGMEM = "application/json";
 static const char HTTP_NOT_FOUND_TEXT[] PROGMEM = "Not Found";
 static const char HTTP_CONF_LINK[] PROGMEM = "/configure";
+static const char HTTP_STATUS_LINK[] PROGMEM = "/status";
 static const char HTTP_SAVE_LINK[] PROGMEM = "/save";
 static const char HTTP_ROOT_LINK[] PROGMEM = "/";
 static const char FTP_LOGIN_[] PROGMEM = "admin";
@@ -76,6 +78,7 @@ protected:
     void handleTerminalClient();
     void handleSettingsSave();
     void handleGetSettings();
+    void handleGetStatus();
     bool handleRoot();
     bool startAP();
     void halt();
