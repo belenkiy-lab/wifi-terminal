@@ -48,8 +48,12 @@ def ensure_xterm_assets(source, target, env):
         raise RuntimeError("xterm.js archive SHA-512 verification failed")
 
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as package:
-        js = package.extractfile("package/lib/xterm.js").read()
-        css = package.extractfile("package/css/xterm.css").read()
+        js_file = package.extractfile("package/lib/xterm.js")
+        css_file = package.extractfile("package/css/xterm.css")
+        if js_file is None or css_file is None:
+            raise RuntimeError("xterm.js archive does not contain expected web assets")
+        js = js_file.read()
+        css = css_file.read()
 
     os.makedirs(data_dir, exist_ok=True)
     _write_if_changed(js_path, js)
@@ -57,6 +61,5 @@ def ensure_xterm_assets(source, target, env):
     print("xterm.js web assets ready")
 
 
-if not env.IsIntegrationDump():
-    env.AddPreAction("buildfs", ensure_xterm_assets)
-    env.AddPreAction("uploadfs", ensure_xterm_assets)
+env.AddPreAction("buildfs", ensure_xterm_assets)
+env.AddPreAction("uploadfs", ensure_xterm_assets)
