@@ -242,31 +242,41 @@ void Application::handleWebConsole()
                 "[[;red;]terminal client disconnected]");
         }
     }
+
     static String line;
+    static bool previousWasCR = false;
+
     while(Serial.available())
     {
         char chr = Serial.read();
-        if((chr == '\n') || (line.length() >= LINE_MAX))
+
+        if (chr == '\r')
+        {
+            _webSockServer->broadcastTXT(line);
+            line.clear();
+            previousWasCR = true;
+            continue;
+        }
+
+        if (chr == '\n')
+        {
+            // Treat CR+LF as one line ending. LF on its own also ends a line.
+            if (!previousWasCR)
+            {
+                _webSockServer->broadcastTXT(line);
+                line.clear();
+            }
+            previousWasCR = false;
+            continue;
+        }
+
+        previousWasCR = false;
+        line += chr;
+
+        if (line.length() >= LINE_MAX)
         {
             _webSockServer->broadcastTXT(line);
             line.clear();
         }
-        if (chr != '\n')
-            line += chr;
-        
     }
-    // протестировать
-    // static char buffer[LINE_MAX];
-    // static size_t index = 0;
-    // while(Serial.available())
-    // {
-    //     char chr = Serial.read();
-    //     if((chr == '\n') || (index == LINE_MAX))
-    //     {
-    //         _webSockServer->broadcastTXT(buffer, index);
-    //         index = 0;
-    //     }
-    //     if(chr != '\n')
-    //         buffer[index++] = chr;
-    // }
 }
