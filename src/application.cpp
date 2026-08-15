@@ -194,40 +194,9 @@ void Application::handleSerialInput()
         }
     }
 
-    static String line;
-    static bool previousWasCR = false;
-
-    for (size_t i = 0; i < serialGotBytesCount; i++)
+    if (!_webSockServer->broadcastBIN(buffer, serialGotBytesCount))
     {
-        char chr = static_cast<char>(buffer[i]);
-
-        if (chr == '\r')
-        {
-            _webSockServer->broadcastTXT(line);
-            line.clear();
-            previousWasCR = true;
-            continue;
-        }
-
-        if (chr == '\n')
-        {
-            if (!previousWasCR)
-            {
-                _webSockServer->broadcastTXT(line);
-                line.clear();
-            }
-            previousWasCR = false;
-            continue;
-        }
-
-        previousWasCR = false;
-        line += chr;
-
-        if (line.length() >= LINE_MAX)
-        {
-            _webSockServer->broadcastTXT(line);
-            line.clear();
-        }
+        logger->println("websocket broadcast failed");
     }
 }
 void Application::handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
@@ -241,7 +210,7 @@ void Application::handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payl
     {
         logger->printf("ws client #%u disconnected\n", num);
     }
-    else if (type == WStype_TEXT)
+    else if (type == WStype_TEXT || type == WStype_BIN)
     {
         logger->write(payload, length);
         Serial.write(payload, length);
