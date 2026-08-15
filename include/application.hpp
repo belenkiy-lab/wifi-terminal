@@ -76,7 +76,7 @@ protected:
     String getContentType(const String &filename);
     bool handleFileRead(String path);
     void handleNotFound();
-    void handleWebConsole();
+    void handleSerialInput();
 
     void handleTerminalClient();
     void handleSettingsSave();
