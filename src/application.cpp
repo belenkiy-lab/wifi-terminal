@@ -20,6 +20,8 @@
 #endif
 #include <SimpleFTPServer.h>
 
+static uint32_t uartRxOverrunCount = 0;
+
 void changeBuilinLedState()
 {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
@@ -141,6 +143,7 @@ void Application::handleGetStatus()
     StaticJsonDocument<160> doc;
     doc["uptime"] = millis() / 1000UL;
     doc["reset_reason"] = ESP.getResetReason();
+    doc["uart_rx_overruns"] = uartRxOverrunCount;
     serializeJson(doc, serializedData);
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), serializedData);
 }
@@ -265,6 +268,6 @@ void Application::mainloop()
 
     if (Serial.hasOverrun())
     {
-        logger->println("UART RX OVERRUN");
+        uartRxOverrunCount++;
     }
 }
