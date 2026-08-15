@@ -262,4 +262,9 @@ void Application::mainloop()
     _WebServer->handleClient();
     this->handleTerminalClient();
     this->handleSerialInput();
+
+    if (Serial.hasOverrun())
+    {
+        logger->println("UART RX OVERRUN");
+    }
 }
