@@ -6,7 +6,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
-#include <SimpleFTPServer.h>
 #include <WebSocketsServer.h>
 #include <DNSServer.h>
 #include <Ticker.h>
@@ -15,6 +14,8 @@
 
 #include "logger.hpp"
 #include "jsonconfig.hpp"
+
+class FtpServer;
 
 static const char AFTER_SAVING_MSG[] PROGMEM = "Rebooting...\n"
 "Please plug-in 'Wireless Terminal' to device and connect with terminal (23 port)";
@@ -30,8 +31,8 @@ static const char HTTP_CONF_LINK[] PROGMEM = "/configure";
 static const char HTTP_STATUS_LINK[] PROGMEM = "/status";
 static const char HTTP_SAVE_LINK[] PROGMEM = "/save";
 static const char HTTP_ROOT_LINK[] PROGMEM = "/";
-static const char FTP_LOGIN_[] PROGMEM = "admin";
-static const char FTP_PASSWORD_[] PROGMEM = "admin";
+static const char FTP_LOGIN_[] = "admin";
+static const char FTP_PASSWORD_[] = "admin";
 
 const IPAddress DEFAULT_AP_GATEWAY(0, 0, 0, 0);
 const IPAddress DEFAULT_AP_MASK(255, 255, 255, 0);
