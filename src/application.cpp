@@ -118,8 +118,9 @@ void Application::handleGetSettings()
 void Application::handleGetStatus()
 {
     String serializedData;
-    StaticJsonDocument<64> doc;
+    StaticJsonDocument<160> doc;
     doc["uptime"] = millis() / 1000UL;
+    doc["reset_reason"] = ESP.getResetReason();
     serializeJson(doc, serializedData);
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), serializedData);
 }
@@ -135,8 +136,14 @@ void Application::handleTerminalClient()
         _terminalClient = _terminalServer->accept();
         logger->println("Client connected to telnet server");
     }
-    while (_terminalClient.available() && Serial.availableForWrite() > 0)
+
+    size_t tcpToSerial = 0;
+    while (_terminalClient.available() && Serial.availableForWrite() > 0 &&
+           tcpToSerial < TCP_TO_SERIAL_MAX_PER_LOOP)
+    {
         Serial.write(_terminalClient.read());
+        tcpToSerial++;
+    }
 
     size_t maxToTcp = 0;
     if (_terminalClient)
@@ -269,7 +276,6 @@ void Application::handleWebConsole()
 
         if (chr == '\n')
         {
-            // Treat CR+LF as one line ending. LF on its own also ends a line.
             if (!previousWasCR)
             {
                 _webSockServer->broadcastTXT(line);
