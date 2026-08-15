@@ -27,3 +27,12 @@ jobs:
 
       - name: Build SPIFFS image
         run: pio run --target buildfs
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wifi-terminal-d1-mini
+          path: |
+            .pio/build/d1_mini/firmware.bin
+            .pio/build/d1_mini/spiffs.bin
+          if-no-files-found: error
