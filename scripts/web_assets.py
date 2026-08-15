@@ -1,4 +1,4 @@
-# Fetch pinned third-party web assets only when building the LittleFS image.
+# Fetch pinned third-party web assets before building the LittleFS image.
 # The device serves these files locally; it does not need Internet access at runtime.
 
 import base64
@@ -61,5 +61,7 @@ def ensure_xterm_assets(source, target, env):
     print("xterm.js web assets ready")
 
 
-env.AddPreAction("buildfs", ensure_xterm_assets)
-env.AddPreAction("uploadfs", ensure_xterm_assets)
+# Hook the actual filesystem image file, not the buildfs alias. PlatformIO
+# resolves the alias after its dependencies, so a pre-action on "buildfs"
+# can run too late (after littlefs.bin has already been created).
+env.AddPreAction("$BUILD_DIR/littlefs.bin", ensure_xterm_assets)
