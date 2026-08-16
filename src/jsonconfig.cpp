@@ -96,6 +96,8 @@ void Configuration::serialize(DynamicJsonDocument &document)
     document[FPSTR(HTML_ID_APADDRESS)] = APaddress.toString();
     document[FPSTR(HTML_ID_WIFI_SSID)] = WiFiSSID;
     document[FPSTR(HTML_ID_WIFI_PASSWORD)] = WiFiPassword;
+    document[FPSTR(HTML_ID_FTP_LOGIN)] = FTPLogin;
+    document[FPSTR(HTML_ID_FTP_PASSWORD)] = FTPPassword;
 }
 void Configuration::deserialize(DynamicJsonDocument &document)
 {
@@ -112,6 +114,10 @@ void Configuration::deserialize(DynamicJsonDocument &document)
         APaddress = IPAddress(192, 168, 4, 1);
     WiFiSSID = document[FPSTR(HTML_ID_WIFI_SSID)].as<String>();
     WiFiPassword = document[FPSTR(HTML_ID_WIFI_PASSWORD)].as<String>();
+    FTPLogin = document[FPSTR(HTML_ID_FTP_LOGIN)].as<String>();
+    FTPLogin = FTPLogin.isEmpty() ? FPSTR(DEFAULT_FTP_LOGIN) : FTPLogin;
+    FTPPassword = document[FPSTR(HTML_ID_FTP_PASSWORD)].as<String>();
+    FTPPassword = FTPPassword.isEmpty() ? FPSTR(DEFAULT_FTP_PASS) : FTPPassword;
 }
 String Configuration::toUrlString()
 {
@@ -124,6 +130,8 @@ String Configuration::toUrlString()
     result += "&" + String(FPSTR(HTML_ID_APADDRESS)) + "=" + APaddress.toString();
     result += "&" + String(FPSTR(HTML_ID_WIFI_SSID)) + "=" + WiFiSSID;
     result += "&" + String(FPSTR(HTML_ID_WIFI_PASSWORD)) + "=" + WiFiPassword;
+    result += "&" + String(FPSTR(HTML_ID_FTP_LOGIN)) + "=" + FTPLogin;
+    result += "&" + String(FPSTR(HTML_ID_FTP_PASSWORD)) + "=" + FTPPassword;
 
     return result;
 }
@@ -179,6 +187,19 @@ void Configuration::fromMapping(const std::map<String, String> &mapping)
         if (pass != FPSTR(WIFI_PASSWORD_MASK) &&
             validateWiFiStringParameter(pass, MIN_WIFI_PASS_LEN, MAX_WIFI_PASS_LEN))
             WiFiPassword = pass;
+    }
+    if (mapping.find(String(FPSTR(HTML_ID_FTP_LOGIN))) != mapping.end())
+    {
+        String login = mapping.at(FPSTR(HTML_ID_FTP_LOGIN));
+        if (validateWiFiStringParameter(login, MIN_FTP_LOGIN_LEN, MAX_FTP_LOGIN_LEN))
+            FTPLogin = login;
+    }
+    if (mapping.find(String(FPSTR(HTML_ID_FTP_PASSWORD))) != mapping.end())
+    {
+        String pass = mapping.at(FPSTR(HTML_ID_FTP_PASSWORD));
+        if (pass != FPSTR(FTP_PASSWORD_MASK) &&
+            validateWiFiStringParameter(pass, MIN_FTP_PASS_LEN, MAX_FTP_PASS_LEN))
+            FTPPassword = pass;
     }
 }
 bool JSONConfig::save(Configuration &data, File &configFile, size_t size)
