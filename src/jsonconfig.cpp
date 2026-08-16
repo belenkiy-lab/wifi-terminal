@@ -60,17 +60,21 @@ bool validateParameter_sbaud(long sbaud)
 bool validateStringParameter(const String &param, unsigned min, unsigned max)
 {
     logger->print("validate string parameter: '" + param);
-    if (param.length() >= min && param.length() <= max)
+    if (param.length() < min || param.length() > max)
     {
-        for (size_t i = 0; i < param.length(); i++)
-        {
-            if (isPrintable(param[i]))
-                continue;
-
-            logger->println("' failed");
-            return false;
-        }
+        logger->println("' failed");
+        return false;
     }
+
+    for (size_t i = 0; i < param.length(); i++)
+    {
+        if (isPrintable(param[i]))
+            continue;
+
+        logger->println("' failed");
+        return false;
+    }
+
     logger->println("' passed");
     return true;
 }
@@ -83,6 +87,8 @@ void Configuration::serialize(DynamicJsonDocument &document)
     document[FPSTR(HTML_ID_APPASS)] = APPassword;
     document[FPSTR(HTML_ID_APCHANNEL)] = APchannel;
     document[FPSTR(HTML_ID_APADDRESS)] = APaddress.toString();
+    document[FPSTR(HTML_ID_WIFI_SSID)] = WiFiSSID;
+    document[FPSTR(HTML_ID_WIFI_PASSWORD)] = WiFiPassword;
 }
 void Configuration::deserialize(DynamicJsonDocument &document)
 {
@@ -95,6 +101,10 @@ void Configuration::deserialize(DynamicJsonDocument &document)
     APPassword = APPassword.isEmpty() ? FPSTR(DEFAULT_AP_PASS) : APPassword;
     APchannel = document[FPSTR(HTML_ID_APCHANNEL)] | DEFAULT_AP_CHANNEL;
     APaddress.fromString(document[FPSTR(HTML_ID_APADDRESS)].as<String>());
+    if (APaddress == IPAddress(0, 0, 0, 0))
+        APaddress = IPAddress(192, 168, 4, 1);
+    WiFiSSID = document[FPSTR(HTML_ID_WIFI_SSID)].as<String>();
+    WiFiPassword = document[FPSTR(HTML_ID_WIFI_PASSWORD)].as<String>();
 }
 String Configuration::toUrlString()
 {
@@ -105,6 +115,8 @@ String Configuration::toUrlString()
     result += "&" + String(FPSTR(HTML_ID_APPASS)) + "=" + APPassword;
     result += "&" + String(FPSTR(HTML_ID_APCHANNEL)) + "=" + String(APchannel);
     result += "&" + String(FPSTR(HTML_ID_APADDRESS)) + "=" + APaddress.toString();
+    result += "&" + String(FPSTR(HTML_ID_WIFI_SSID)) + "=" + WiFiSSID;
+    result += "&" + String(FPSTR(HTML_ID_WIFI_PASSWORD)) + "=" + WiFiPassword;
 
     return result;
 }
@@ -147,6 +159,20 @@ void Configuration::fromMapping(const std::map<String, String> &mapping)
     }
     if (mapping.find(String(FPSTR(HTML_ID_APADDRESS))) != mapping.end())
         APaddress.fromString(mapping.at(FPSTR(HTML_ID_APADDRESS)));
+
+    if (mapping.find(String(FPSTR(HTML_ID_WIFI_SSID))) != mapping.end())
+    {
+        String ssid = mapping.at(FPSTR(HTML_ID_WIFI_SSID));
+        if (!ssid.isEmpty() && validateStringParameter(ssid, 1, MAX_WIFI_SSID_LEN))
+            WiFiSSID = ssid;
+    }
+    if (mapping.find(String(FPSTR(HTML_ID_WIFI_PASSWORD))) != mapping.end())
+    {
+        String pass = mapping.at(FPSTR(HTML_ID_WIFI_PASSWORD));
+        if (pass != FPSTR(WIFI_PASSWORD_MASK) &&
+            validateStringParameter(pass, MIN_WIFI_PASS_LEN, MAX_WIFI_PASS_LEN))
+            WiFiPassword = pass;
+    }
 }
 bool JSONConfig::save(Configuration &data, File &configFile, size_t size)
 {
