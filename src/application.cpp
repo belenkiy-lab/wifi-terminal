@@ -22,6 +22,217 @@
 
 static uint32_t uartRxOverrunCount = 0;
 
+enum class TerminalResponseType : uint8_t
+{
+    None,
+    CursorPosition,
+    DeviceStatus,
+    DeviceAttributes
+};
+
+static const unsigned long TERMINAL_RESPONSE_TIMEOUT_MS = 500;
+static uint8_t pendingCursorPositionResponses = 0;
+static uint8_t pendingDeviceStatusResponses = 0;
+static uint8_t pendingDeviceAttributeResponses = 0;
+static unsigned long lastCursorPositionQueryMs = 0;
+static unsigned long lastDeviceStatusQueryMs = 0;
+static unsigned long lastDeviceAttributeQueryMs = 0;
+static uint8_t terminalQueryParserState = 0;
+static char terminalQueryParams[16];
+static size_t terminalQueryParamsLength = 0;
+
+static void noteExpectedTerminalResponse(TerminalResponseType type)
+{
+    unsigned long now = millis();
+    switch (type)
+    {
+        case TerminalResponseType::CursorPosition:
+            if (pendingCursorPositionResponses < 0xff)
+                pendingCursorPositionResponses++;
+            lastCursorPositionQueryMs = now;
+            break;
+        case TerminalResponseType::DeviceStatus:
+            if (pendingDeviceStatusResponses < 0xff)
+                pendingDeviceStatusResponses++;
+            lastDeviceStatusQueryMs = now;
+            break;
+        case TerminalResponseType::DeviceAttributes:
+            if (pendingDeviceAttributeResponses < 0xff)
+                pendingDeviceAttributeResponses++;
+            lastDeviceAttributeQueryMs = now;
+            break;
+        default:
+            break;
+    }
+}
+
+static bool terminalQueryParamsEqual(const char *value)
+{
+    size_t length = strlen(value);
+    return terminalQueryParamsLength == length &&
+           memcmp(terminalQueryParams, value, length) == 0;
+}
+
+static void observeTerminalQueries(const uint8_t *data, size_t length, bool tcpPrimaryActive)
+{
+    if (!data || !length)
+        return;
+
+    for (size_t i = 0; i < length; i++)
+    {
+        uint8_t value = data[i];
+
+        if (terminalQueryParserState == 0)
+        {
+            if (value == 0x1b)
+                terminalQueryParserState = 1;
+            continue;
+        }
+
+        if (terminalQueryParserState == 1)
+        {
+            if (value == '[')
+            {
+                terminalQueryParserState = 2;
+                terminalQueryParamsLength = 0;
+            }
+            else
+            {
+                if (value == 'Z' && tcpPrimaryActive)
+                    noteExpectedTerminalResponse(TerminalResponseType::DeviceAttributes);
+                terminalQueryParserState = value == 0x1b ? 1 : 0;
+            }
+            continue;
+        }
+
+        if (value == 0x1b)
+        {
+            terminalQueryParserState = 1;
+            terminalQueryParamsLength = 0;
+            continue;
+        }
+
+        if (value >= 0x30 && value <= 0x3f)
+        {
+            if (terminalQueryParamsLength < sizeof(terminalQueryParams))
+                terminalQueryParams[terminalQueryParamsLength++] = static_cast<char>(value);
+            continue;
+        }
+
+        if (value >= 0x20 && value <= 0x2f)
+            continue;
+
+        if (value >= 0x40 && value <= 0x7e)
+        {
+            if (tcpPrimaryActive)
+            {
+                if (value == 'n')
+                {
+                    if (terminalQueryParamsEqual("6") || terminalQueryParamsEqual("?6"))
+                        noteExpectedTerminalResponse(TerminalResponseType::CursorPosition);
+                    else if (terminalQueryParamsEqual("5") || terminalQueryParamsEqual("?5"))
+                        noteExpectedTerminalResponse(TerminalResponseType::DeviceStatus);
+                }
+                else if (value == 'c')
+                {
+                    noteExpectedTerminalResponse(TerminalResponseType::DeviceAttributes);
+                }
+            }
+            terminalQueryParserState = 0;
+            terminalQueryParamsLength = 0;
+            continue;
+        }
+
+        terminalQueryParserState = 0;
+        terminalQueryParamsLength = 0;
+    }
+}
+
+static TerminalResponseType classifyWebTerminalResponse(const uint8_t *data, size_t length)
+{
+    if (!data || length < 4 || data[0] != 0x1b || data[1] != '[')
+        return TerminalResponseType::None;
+
+    size_t pos = 2;
+    bool privatePrefix = false;
+    if (data[pos] == '?' || data[pos] == '>')
+    {
+        privatePrefix = true;
+        pos++;
+    }
+
+    if (pos >= length - 1)
+        return TerminalResponseType::None;
+
+    bool sawDigit = false;
+    bool sawSemicolon = false;
+    for (size_t i = pos; i < length - 1; i++)
+    {
+        if (data[i] >= '0' && data[i] <= '9')
+        {
+            sawDigit = true;
+            continue;
+        }
+        if (data[i] == ';')
+        {
+            sawSemicolon = true;
+            continue;
+        }
+        return TerminalResponseType::None;
+    }
+
+    if (!sawDigit)
+        return TerminalResponseType::None;
+
+    uint8_t finalByte = data[length - 1];
+    if (finalByte == 'R' && sawSemicolon)
+        return TerminalResponseType::CursorPosition;
+    if (finalByte == 'n')
+        return TerminalResponseType::DeviceStatus;
+    if (finalByte == 'c' && privatePrefix)
+        return TerminalResponseType::DeviceAttributes;
+
+    return TerminalResponseType::None;
+}
+
+static bool consumePendingResponse(uint8_t &pending, unsigned long lastQueryMs)
+{
+    if (!pending)
+        return false;
+
+    if (millis() - lastQueryMs > TERMINAL_RESPONSE_TIMEOUT_MS)
+    {
+        pending = 0;
+        return false;
+    }
+
+    pending--;
+    return true;
+}
+
+static bool shouldSuppressWebTerminalResponse(const uint8_t *data, size_t length, bool tcpPrimaryActive)
+{
+    if (!tcpPrimaryActive)
+    {
+        pendingCursorPositionResponses = 0;
+        pendingDeviceStatusResponses = 0;
+        pendingDeviceAttributeResponses = 0;
+        return false;
+    }
+
+    switch (classifyWebTerminalResponse(data, length))
+    {
+        case TerminalResponseType::CursorPosition:
+            return consumePendingResponse(pendingCursorPositionResponses, lastCursorPositionQueryMs);
+        case TerminalResponseType::DeviceStatus:
+            return consumePendingResponse(pendingDeviceStatusResponses, lastDeviceStatusQueryMs);
+        case TerminalResponseType::DeviceAttributes:
+            return consumePendingResponse(pendingDeviceAttributeResponses, lastDeviceAttributeQueryMs);
+        default:
+            return false;
+    }
+}
+
 void changeBuilinLedState()
 {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
@@ -390,6 +601,7 @@ void Application::handleSerialInput()
         return;
 
     appendDebugRecord("RX UART", buffer, serialGotBytesCount);
+    observeTerminalQueries(buffer, serialGotBytesCount, _terminalClient.connected());
 
     if (_terminalClient.connected())
     {
@@ -422,6 +634,9 @@ void Application::handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payl
     }
     else if (type == WStype_TEXT || type == WStype_BIN)
     {
+        if (shouldSuppressWebTerminalResponse(payload, length, _terminalClient.connected()))
+            return;
+
         logger->write(payload, length);
         appendDebugRecord("TX WEB", payload, length);
         Serial.write(payload, length);
