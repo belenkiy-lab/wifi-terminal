@@ -17,11 +17,18 @@
 #define MAX_WIFI_SSID_LEN 32
 #define MIN_WIFI_PASS_LEN 8
 #define MAX_WIFI_PASS_LEN 64
+#define MIN_FTP_LOGIN_LEN 1
+#define MAX_FTP_LOGIN_LEN 32
+#define MIN_FTP_PASS_LEN 8
+#define MAX_FTP_PASS_LEN 64
 #define AP_MAX_CHANNEL 13
 const unsigned int DEFAULT_SERIAL_CONFIG = SERIAL_8N1;
 static const char DEFAULT_AP_SSID[] PROGMEM = "WirelessTerminal";
 static const char DEFAULT_AP_PASS[] PROGMEM = "123456789";
+static const char DEFAULT_FTP_LOGIN[] PROGMEM = "admin";
+static const char DEFAULT_FTP_PASS[] PROGMEM = "admin";
 static const char WIFI_PASSWORD_MASK[] PROGMEM = "********";
+static const char FTP_PASSWORD_MASK[] PROGMEM = "********";
 static const char HTML_ID_SBAUD[] PROGMEM = "baud";
 static const char HTML_ID_SCONFIG[] PROGMEM = "config";
 static const char HTML_ID_APSSID[] PROGMEM = "SSID";
@@ -30,6 +37,8 @@ static const char HTML_ID_APCHANNEL[] PROGMEM = "channel";
 static const char HTML_ID_APADDRESS[] PROGMEM = "address";
 static const char HTML_ID_WIFI_SSID[] PROGMEM = "wifi_ssid";
 static const char HTML_ID_WIFI_PASSWORD[] PROGMEM = "wifi_password";
+static const char HTML_ID_FTP_LOGIN[] PROGMEM = "ftp_login";
+static const char HTML_ID_FTP_PASSWORD[] PROGMEM = "ftp_password";
 
 class Configuration
 {
@@ -44,6 +53,9 @@ public:
 
     String WiFiSSID;
     String WiFiPassword;
+
+    String FTPLogin = FPSTR(DEFAULT_FTP_LOGIN);
+    String FTPPassword = FPSTR(DEFAULT_FTP_PASS);
 
     void serialize(DynamicJsonDocument &document);
     void deserialize(DynamicJsonDocument &document);
