@@ -97,7 +97,7 @@ void Configuration::serialize(DynamicJsonDocument &document)
     document[FPSTR(HTML_ID_WIFI_SSID)] = WiFiSSID;
     document[FPSTR(HTML_ID_WIFI_PASSWORD)] = WiFiPassword;
     document[FPSTR(HTML_ID_FTP_LOGIN)] = FTPLogin;
-    document[FPSTR(HTML_ID_FTP_PASSWORD)] = FTPPassword;
+    document[FPSTR(HTML_ID_FTP_PASSWORD)] = FPSTR(FTP_PASSWORD_MASK);
 }
 void Configuration::deserialize(DynamicJsonDocument &document)
 {
@@ -131,7 +131,7 @@ String Configuration::toUrlString()
     result += "&" + String(FPSTR(HTML_ID_WIFI_SSID)) + "=" + WiFiSSID;
     result += "&" + String(FPSTR(HTML_ID_WIFI_PASSWORD)) + "=" + WiFiPassword;
     result += "&" + String(FPSTR(HTML_ID_FTP_LOGIN)) + "=" + FTPLogin;
-    result += "&" + String(FPSTR(HTML_ID_FTP_PASSWORD)) + "=" + FTPPassword;
+    result += "&" + String(FPSTR(HTML_ID_FTP_PASSWORD)) + "=" + FPSTR(FTP_PASSWORD_MASK);
 
     return result;
 }
@@ -210,6 +210,7 @@ bool JSONConfig::save(Configuration &data, File &configFile, size_t size)
     DynamicJsonDocument doc(size);
 
     data.serialize(doc);
+    doc[FPSTR(HTML_ID_FTP_PASSWORD)] = data.FTPPassword;
     if (configFile)
     {
         serializeJson(doc, configFile);
