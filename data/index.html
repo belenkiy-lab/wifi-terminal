@@ -27,11 +27,15 @@
         label { color:#c5cdd6; font-size:13px; }
         input, select { width:100%; min-height:38px; padding:7px 10px; border:1px solid #353d47; border-radius:8px; background:var(--panel2); color:var(--text); outline:none; }
         input:focus, select:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(46,168,255,.13); }
+        .hint { margin:10px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
         .debug-toggle { display:flex; align-items:flex-start; gap:10px; padding:10px 0 2px; }
         .debug-toggle input { width:auto; min-height:0; margin-top:2px; accent-color:var(--accent); }
         .debug-copy { display:flex; flex-direction:column; gap:4px; }
         .debug-copy small { color:var(--muted); line-height:1.35; }
         .debug-state { margin-top:8px; color:var(--muted); font:12px Consolas,"Courier New",monospace; }
+        .wifi-actions { display:flex; justify-content:flex-end; margin-top:14px; }
+        .delete-wifi { padding:9px 13px; border:1px solid #7a343b; border-radius:8px; background:#291619; color:#ef9aa3; cursor:pointer; }
+        .delete-wifi:hover { background:#361b1f; }
         .actions { margin-top:18px; display:flex; justify-content:center; }
         .save { min-width:240px; padding:12px 22px; border:1px solid #d85b67; border-radius:10px; background:var(--danger); color:#fff; font-weight:700; cursor:pointer; }
         .save:hover { filter:brightness(1.08); }
@@ -50,11 +54,7 @@
 <body>
     <header class="topbar">
         <div class="brand">Wireless Terminal</div>
-        <nav>
-            <a class="active" href="/">Settings</a>
-            <a href="/terminal.html">Terminal</a>
-            <a href="/status.html">Status</a>
-        </nav>
+        <nav><a class="active" href="/">Settings</a><a href="/terminal.html">Terminal</a><a href="/status.html">Status</a></nav>
     </header>
 
     <main class="page">
@@ -68,166 +68,61 @@
             <div class="grid">
                 <section class="card">
                     <h2>Serial port</h2>
-                    <div class="field">
-                        <label for="baud">Speed</label>
-                        <select name="baud" id="baud">
-                            <option>1200</option><option>2400</option><option>4800</option><option>9600</option>
-                            <option>19200</option><option>38400</option><option>57600</option><option>74880</option><option>115200</option>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label for="config">Configuration</label>
-                        <select name="config" id="config">
-                            <option value="16">SERIAL_5N1</option><option value="20">SERIAL_6N1</option><option value="24">SERIAL_7N1</option><option value="28">SERIAL_8N1</option>
-                            <option value="48">SERIAL_5N2</option><option value="52">SERIAL_6N2</option><option value="56">SERIAL_7N2</option><option value="60">SERIAL_8N2</option>
-                            <option value="18">SERIAL_5E1</option><option value="22">SERIAL_6E1</option><option value="26">SERIAL_7E1</option><option value="30">SERIAL_8E1</option>
-                            <option value="50">SERIAL_5E2</option><option value="54">SERIAL_6E2</option><option value="58">SERIAL_7E2</option><option value="62">SERIAL_8E2</option>
-                            <option value="19">SERIAL_5O1</option><option value="23">SERIAL_6O1</option><option value="27">SERIAL_7O1</option><option value="31">SERIAL_8O1</option>
-                            <option value="51">SERIAL_5O2</option><option value="55">SERIAL_6O2</option><option value="59">SERIAL_7O2</option><option value="63">SERIAL_8O2</option>
-                        </select>
-                    </div>
+                    <div class="field"><label for="baud">Speed</label><select name="baud" id="baud"><option>1200</option><option>2400</option><option>4800</option><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>74880</option><option>115200</option></select></div>
+                    <div class="field"><label for="config">Configuration</label><select name="config" id="config"><option value="16">SERIAL_5N1</option><option value="20">SERIAL_6N1</option><option value="24">SERIAL_7N1</option><option value="28">SERIAL_8N1</option><option value="48">SERIAL_5N2</option><option value="52">SERIAL_6N2</option><option value="56">SERIAL_7N2</option><option value="60">SERIAL_8N2</option><option value="18">SERIAL_5E1</option><option value="22">SERIAL_6E1</option><option value="26">SERIAL_7E1</option><option value="30">SERIAL_8E1</option><option value="50">SERIAL_5E2</option><option value="54">SERIAL_6E2</option><option value="58">SERIAL_7E2</option><option value="62">SERIAL_8E2</option><option value="19">SERIAL_5O1</option><option value="23">SERIAL_6O1</option><option value="27">SERIAL_7O1</option><option value="31">SERIAL_8O1</option><option value="51">SERIAL_5O2</option><option value="55">SERIAL_6O2</option><option value="59">SERIAL_7O2</option><option value="63">SERIAL_8O2</option></select></div>
                 </section>
 
                 <section class="card">
                     <h2>Web terminal</h2>
-                    <div class="field">
-                        <label for="terminal_scrollback">Scrollback lines</label>
-                        <input type="number" min="0" max="10000" step="1" id="terminal_scrollback" value="1000" />
-                    </div>
-                    <div class="debug-toggle">
-                        <input type="checkbox" id="uart_debug" />
-                        <div class="debug-copy">
-                            <label for="uart_debug">UART debug until reboot</label>
-                            <small>Logs RX UART and TX WEB/TCP/SYS to /debug.log. A new session replaces the previous log.</small>
-                        </div>
-                    </div>
+                    <div class="field"><label for="terminal_scrollback">Scrollback lines</label><input type="number" min="0" max="10000" step="1" id="terminal_scrollback" value="1000" /></div>
+                    <div class="debug-toggle"><input type="checkbox" id="uart_debug" /><div class="debug-copy"><label for="uart_debug">UART debug until reboot</label><small>Logs RX UART and TX WEB/TCP/SYS to /debug.log. A new session replaces the previous log.</small></div></div>
                     <div class="debug-state" id="uart_debug_state">Debug: loading...</div>
                 </section>
 
                 <section class="card full">
-                    <h2>Access Point</h2>
-                    <div class="field">
-                        <label for="SSID">SSID</label>
-                        <input type="text" name="SSID" id="SSID" maxlength="32" placeholder="access point name" required pattern="[0-9a-zA-Z\-]{3,32}" />
-                    </div>
-                    <div class="field">
-                        <label for="password">Password</label>
-                        <input type="password" name="password" id="password" maxlength="64" placeholder="min. 8 characters" required pattern="[0-9a-zA-Z@#$%]{8,64}" />
-                    </div>
-                    <div class="field">
-                        <label for="channel">Channel</label>
-                        <input type="number" min="1" max="13" name="channel" id="channel" required />
-                    </div>
-                    <div class="field">
-                        <label for="address">IP address</label>
-                        <input type="text" name="address" id="address" placeholder="format 0.0.0.0" required pattern="^(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{2}|[0-9])(\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{2}|[0-9])){3}$" />
-                    </div>
+                    <h2>Wi-Fi client</h2>
+                    <div class="field"><label for="wifi_ssid">Wi-Fi SSID</label><input type="text" name="wifi_ssid" id="wifi_ssid" maxlength="32" placeholder="home / office Wi-Fi" /></div>
+                    <div class="field"><label for="wifi_password">Wi-Fi password</label><input type="password" name="wifi_password" id="wifi_password" maxlength="64" placeholder="min. 8 characters" /></div>
+                    <p class="hint">When credentials are configured, the device tries Wi-Fi client mode for 15 seconds. If connection fails or an established connection is lost for 15 seconds, WirelessTerminal AP is started automatically. ******** means the saved password is unchanged.</p>
+                    <div class="wifi-actions"><button type="button" class="delete-wifi" id="delete_wifi">DELETE WI-FI SETTINGS</button></div>
+                </section>
+
+                <section class="card full">
+                    <h2>Recovery Access Point</h2>
+                    <div class="field"><label for="SSID">SSID</label><input type="text" name="SSID" id="SSID" maxlength="32" required pattern="[0-9a-zA-Z\-]{3,32}" /></div>
+                    <div class="field"><label for="password">Password</label><input type="password" name="password" id="password" maxlength="64" required pattern="[0-9a-zA-Z@#$%]{8,64}" /></div>
+                    <div class="field"><label for="channel">Channel</label><input type="number" min="1" max="13" name="channel" id="channel" required /></div>
+                    <div class="field"><label for="address">IP address</label><input type="text" name="address" id="address" required pattern="^(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{2}|[0-9])(\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{2}|[0-9])){3}$" /></div>
                 </section>
             </div>
             <div class="actions"><button type="submit" class="save">SAVE AND REBOOT</button></div>
         </form>
-
         <footer class="footer"><span id="uptime">Uptime: --</span><span>Belenkiy © 2023</span></footer>
     </main>
 
     <script>
-        const TERMINAL_SCROLLBACK_KEY = 'webTerminalScrollback';
-        const TERMINAL_SCROLLBACK_DEFAULT = 1000;
-        const TERMINAL_SCROLLBACK_MAX = 10000;
-        const debugCheckbox = document.getElementById('uart_debug');
-        const debugState = document.getElementById('uart_debug_state');
-        let debugBusy = false;
+        const TERMINAL_SCROLLBACK_KEY='webTerminalScrollback', TERMINAL_SCROLLBACK_DEFAULT=1000, TERMINAL_SCROLLBACK_MAX=10000;
+        const debugCheckbox=document.getElementById('uart_debug'), debugState=document.getElementById('uart_debug_state');
+        const wifiSsid=document.getElementById('wifi_ssid'), wifiPassword=document.getElementById('wifi_password');
+        let debugBusy=false;
+        function setValue(id,value){document.getElementById(id).value=value ?? '';}
+        function normalizeScrollback(value){const parsed=Number.parseInt(value,10);return Number.isFinite(parsed)?Math.max(0,Math.min(TERMINAL_SCROLLBACK_MAX,parsed)):TERMINAL_SCROLLBACK_DEFAULT;}
+        function loadScrollback(){let value=TERMINAL_SCROLLBACK_DEFAULT;try{const stored=localStorage.getItem(TERMINAL_SCROLLBACK_KEY);if(stored!==null)value=normalizeScrollback(stored);}catch(e){}document.getElementById('terminal_scrollback').value=value;}
+        function saveScrollback(){const input=document.getElementById('terminal_scrollback');const value=normalizeScrollback(input.value);input.value=value;try{localStorage.setItem(TERMINAL_SCROLLBACK_KEY,String(value));}catch(e){}}
+        function formatUptime(totalSeconds){const d=Math.floor(totalSeconds/86400),h=Math.floor((totalSeconds%86400)/3600),m=Math.floor((totalSeconds%3600)/60),s=totalSeconds%60;return d+'d '+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');}
+        function formatBytes(value){const bytes=Number(value)||0;if(bytes<1024)return bytes+' B';if(bytes<1048576)return(bytes/1024).toFixed(1)+' KiB';return(bytes/1048576).toFixed(2)+' MiB';}
+        function applyDebugStatus(status){debugCheckbox.checked=!!status.debug_enabled;if(status.debug_limit_reached)debugState.textContent='Debug: stopped at limit ('+formatBytes(status.debug_log_bytes)+')';else if(status.debug_enabled)debugState.textContent='Debug: ON · '+formatBytes(status.debug_log_bytes)+' / '+formatBytes(status.debug_log_limit);else if(Number(status.debug_log_bytes)>0)debugState.textContent='Debug: OFF · saved '+formatBytes(status.debug_log_bytes)+' in /debug.log';else debugState.textContent='Debug: OFF';}
+        function updateStatus(){fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(status=>{document.getElementById('uptime').textContent='Uptime: '+formatUptime(status.uptime);if(!debugBusy)applyDebugStatus(status);}).catch(()=>document.getElementById('uptime').textContent='Uptime: unavailable');}
 
-        function setValue(id, value) { document.getElementById(id).value = value; }
-        function normalizeScrollback(value) {
-            const parsed = Number.parseInt(value, 10);
-            return Number.isFinite(parsed) ? Math.max(0, Math.min(TERMINAL_SCROLLBACK_MAX, parsed)) : TERMINAL_SCROLLBACK_DEFAULT;
-        }
-        function loadScrollback() {
-            let value = TERMINAL_SCROLLBACK_DEFAULT;
-            try {
-                const stored = localStorage.getItem(TERMINAL_SCROLLBACK_KEY);
-                if (stored !== null) value = normalizeScrollback(stored);
-            } catch (error) {}
-            document.getElementById('terminal_scrollback').value = value;
-        }
-        function saveScrollback() {
-            const input = document.getElementById('terminal_scrollback');
-            const value = normalizeScrollback(input.value);
-            input.value = value;
-            try { localStorage.setItem(TERMINAL_SCROLLBACK_KEY, String(value)); } catch (error) {}
-        }
-        function formatUptime(totalSeconds) {
-            const days = Math.floor(totalSeconds / 86400);
-            const hours = Math.floor((totalSeconds % 86400) / 3600);
-            const minutes = Math.floor((totalSeconds % 3600) / 60);
-            const seconds = totalSeconds % 60;
-            return days + 'd ' + String(hours).padStart(2,'0') + ':' + String(minutes).padStart(2,'0') + ':' + String(seconds).padStart(2,'0');
-        }
-        function formatBytes(value) {
-            const bytes = Number(value) || 0;
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KiB';
-            return (bytes / (1024 * 1024)).toFixed(2) + ' MiB';
-        }
-        function applyDebugStatus(status) {
-            debugCheckbox.checked = !!status.debug_enabled;
-            if (status.debug_limit_reached) {
-                debugState.textContent = 'Debug: stopped at limit (' + formatBytes(status.debug_log_bytes) + ')';
-            } else if (status.debug_enabled) {
-                debugState.textContent = 'Debug: ON · ' + formatBytes(status.debug_log_bytes) + ' / ' + formatBytes(status.debug_log_limit);
-            } else if (Number(status.debug_log_bytes) > 0) {
-                debugState.textContent = 'Debug: OFF · saved ' + formatBytes(status.debug_log_bytes) + ' in /debug.log';
-            } else {
-                debugState.textContent = 'Debug: OFF';
-            }
-        }
-        function updateStatus() {
-            fetch('/status', { cache:'no-store' })
-                .then(r => r.json())
-                .then(status => {
-                    document.getElementById('uptime').textContent = 'Uptime: ' + formatUptime(status.uptime);
-                    if (!debugBusy) applyDebugStatus(status);
-                })
-                .catch(() => document.getElementById('uptime').textContent = 'Uptime: unavailable');
-        }
-
-        fetch('/configure', { cache:'no-store' })
-            .then(r => r.json())
-            .then(settings => {
-                setValue('baud', settings.baud); setValue('config', settings.config); setValue('SSID', settings.SSID);
-                setValue('password', settings.password); setValue('channel', settings.channel); setValue('address', settings.address);
-            });
-
-        debugCheckbox.addEventListener('change', function() {
-            if (debugBusy) return;
-            debugBusy = true;
-            debugCheckbox.disabled = true;
-            const endpoint = debugCheckbox.checked ? '/debug/start' : '/debug/stop';
-            fetch(endpoint, { method:'POST', cache:'no-store' })
-                .then(async response => {
-                    const payload = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(payload.error || ('HTTP ' + response.status));
-                    return payload;
-                })
-                .then(() => updateStatus())
-                .catch(error => {
-                    debugCheckbox.checked = !debugCheckbox.checked;
-                    debugState.textContent = 'Debug error: ' + error.message;
-                })
-                .finally(() => {
-                    debugBusy = false;
-                    debugCheckbox.disabled = false;
-                    updateStatus();
-                });
+        fetch('/configure',{cache:'no-store'}).then(r=>r.json()).then(settings=>{
+            setValue('baud',settings.baud);setValue('config',settings.config);setValue('SSID',settings.SSID);setValue('password',settings.password);setValue('channel',settings.channel);setValue('address',settings.address);setValue('wifi_ssid',settings.wifi_ssid);setValue('wifi_password',settings.wifi_password);
         });
 
-        loadScrollback();
-        document.getElementById('terminal_scrollback').addEventListener('change', saveScrollback);
-        document.getElementById('settings_form').addEventListener('submit', saveScrollback);
-        document.getElementById('start_terminal').addEventListener('click', function() { saveScrollback(); location.href='/terminal.html'; });
-        updateStatus();
-        setInterval(updateStatus, 1000);
+        debugCheckbox.addEventListener('change',function(){if(debugBusy)return;debugBusy=true;debugCheckbox.disabled=true;const endpoint=debugCheckbox.checked?'/debug/start':'/debug/stop';fetch(endpoint,{method:'POST',cache:'no-store'}).then(async response=>{const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||('HTTP '+response.status));return payload;}).then(()=>updateStatus()).catch(error=>{debugCheckbox.checked=!debugCheckbox.checked;debugState.textContent='Debug error: '+error.message;}).finally(()=>{debugBusy=false;debugCheckbox.disabled=false;updateStatus();});});
+
+        document.getElementById('settings_form').addEventListener('submit',function(event){saveScrollback();wifiPassword.setCustomValidity('');if(wifiSsid.value.trim() && !wifiPassword.value){wifiPassword.setCustomValidity('Enter a Wi-Fi password or keep ******** for the saved password.');wifiPassword.reportValidity();event.preventDefault();}});
+        document.getElementById('delete_wifi').addEventListener('click',function(){if(!confirm('Delete saved Wi-Fi client settings and reboot into Access Point mode?'))return;fetch('/wifi/delete',{method:'POST',cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);alert('Wi-Fi settings deleted. The device is rebooting. Connect to the WirelessTerminal access point.');}).catch(error=>alert('Delete failed: '+error.message));});
+        loadScrollback();document.getElementById('terminal_scrollback').addEventListener('change',saveScrollback);document.getElementById('start_terminal').addEventListener('click',function(){saveScrollback();location.href='/terminal.html';});updateStatus();setInterval(updateStatus,1000);
     </script>
 </body>
 </html>
