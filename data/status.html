@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wireless Terminal - Status</title>
+    <style>
+        :root { color-scheme:dark; --bg:#0b0d10; --panel:#14181d; --border:#2a3038; --text:#e8edf2; --muted:#8d98a5; --accent:#2ea8ff; }
+        * { box-sizing:border-box; }
+        html, body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family:Inter,Segoe UI,Arial,sans-serif; }
+        header { height:54px; display:flex; align-items:center; justify-content:space-between; padding:0 24px; border-bottom:1px solid var(--border); background:#111419; }
+        .brand { font-size:17px; font-weight:700; letter-spacing:.2px; }
+        nav { display:flex; gap:6px; }
+        nav a { color:#aab4bf; text-decoration:none; padding:8px 11px; border-radius:7px; font-size:14px; }
+        nav a:hover, nav a.active { color:#fff; background:#252b33; }
+        main { width:min(760px, calc(100% - 32px)); margin:36px auto; }
+        .title { margin-bottom:18px; }
+        .title h1 { margin:0 0 6px; font-size:28px; }
+        .title p { margin:0; color:var(--muted); font-size:14px; }
+        .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.18); }
+        .row { display:grid; grid-template-columns:200px 1fr; gap:20px; padding:16px 20px; border-bottom:1px solid var(--border); align-items:center; }
+        .row:last-child { border-bottom:0; }
+        .label { color:var(--muted); font-size:14px; }
+        .value { font-family:Consolas,"Courier New",monospace; font-size:15px; overflow-wrap:anywhere; }
+        .online { color:#7fd47f; }
+        .error { color:#ff7777; }
+        .actions { margin-top:18px; display:flex; justify-content:center; }
+        .terminal { display:inline-flex; align-items:center; justify-content:center; min-width:220px; padding:13px 24px; border-radius:9px; text-decoration:none; color:#fff; background:var(--accent); font-weight:700; }
+        .terminal:hover { filter:brightness(1.08); }
+        @media(max-width:560px) { header{padding:0 12px}.brand{font-size:15px}nav a{padding:7px 8px}main{margin:24px auto}.row{grid-template-columns:1fr;gap:7px} }
+    </style>
+</head>
+<body>
+<header><div class="brand">Wireless Terminal</div><nav><a href="/">Settings</a><a href="/terminal.html">Terminal</a><a href="/status.html" class="active">Status</a></nav></header>
+<main>
+    <div class="title"><h1>Device status</h1><p>Live status from the wireless terminal.</p></div>
+    <section class="card">
+        <div class="row"><div class="label">Connection</div><div class="value" id="connection">Loading...</div></div>
+        <div class="row"><div class="label">Network mode</div><div class="value" id="network_mode">--</div></div>
+        <div class="row"><div class="label">Wi-Fi SSID</div><div class="value" id="station_ssid">--</div></div>
+        <div class="row"><div class="label">Station IP</div><div class="value" id="station_ip">--</div></div>
+        <div class="row"><div class="label">Signal</div><div class="value" id="station_rssi">--</div></div>
+        <div class="row"><div class="label">Access Point IP</div><div class="value" id="ap_ip">--</div></div>
+        <div class="row"><div class="label">AP reason</div><div class="value" id="ap_reason">--</div></div>
+        <div class="row"><div class="label">Reset detector ready</div><div class="value" id="reset_detector_ready_ms">--</div></div>
+        <div class="row"><div class="label">Network ready</div><div class="value" id="network_ready_ms">--</div></div>
+        <div class="row"><div class="label">Uptime</div><div class="value" id="uptime">--</div></div>
+        <div class="row"><div class="label">Reset reason</div><div class="value" id="reset_reason">--</div></div>
+        <div class="row"><div class="label">UART RX overruns</div><div class="value" id="uart_rx_overruns">--</div></div>
+        <div class="row"><div class="label">LittleFS</div><div class="value" id="littlefs">--</div></div>
+        <div class="row"><div class="label">UART debug</div><div class="value" id="debug_state">--</div></div>
+        <div class="row"><div class="label">Debug log</div><div class="value" id="debug_log">--</div></div>
+        <div class="row"><div class="label">Dropped debug records</div><div class="value" id="debug_dropped_records">--</div></div>
+    </section>
+    <div class="actions"><a class="terminal" href="/terminal.html">RUN TERMINAL</a></div>
+</main>
+<script>
+function formatUptime(totalSeconds){const d=Math.floor(totalSeconds/86400),h=Math.floor((totalSeconds%86400)/3600),m=Math.floor((totalSeconds%3600)/60),s=totalSeconds%60;return d+'d '+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');}
+function formatBytes(value){const bytes=Number(value)||0;if(bytes<1024)return bytes+' B';if(bytes<1048576)return(bytes/1024).toFixed(1)+' KiB';return(bytes/1048576).toFixed(2)+' MiB';}
+function text(id,value,fallback='--'){document.getElementById(id).textContent=(value===undefined||value===null||value==='')?fallback:value;}
+function updateStatus(){fetch('/status',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(status=>{
+    const connection=document.getElementById('connection');connection.textContent='Online';connection.className='value online';
+    text('network_mode',status.network_mode);text('station_ssid',status.station_ssid);text('station_ip',status.station_ip);text('station_rssi',status.station_rssi?status.station_rssi+' dBm':'--');text('ap_ip',status.ap_ip);text('ap_reason',status.ap_reason);text('reset_detector_ready_ms',status.reset_detector_ready_ms+' ms');text('network_ready_ms',status.network_ready_ms+' ms');
+    text('uptime',formatUptime(status.uptime));text('reset_reason',status.reset_reason);text('uart_rx_overruns',status.uart_rx_overruns);text('littlefs',formatBytes(status.littlefs_used)+' used / '+formatBytes(status.littlefs_total)+' total / '+formatBytes(status.littlefs_free)+' free');
+    let debugState=status.debug_enabled?'ON':'OFF';if(status.debug_limit_reached)debugState+=' · limit reached';text('debug_state',debugState);text('debug_log',formatBytes(status.debug_log_bytes)+(status.debug_log_limit?' / '+formatBytes(status.debug_log_limit):'')+' · /debug.log');text('debug_dropped_records',status.debug_dropped_records);
+}).catch(()=>{const connection=document.getElementById('connection');connection.textContent='Unavailable';connection.className='value error';});}
+updateStatus();setInterval(updateStatus,1000);
+</script>
+</body>
+</html>

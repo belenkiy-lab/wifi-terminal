@@ -74,6 +74,17 @@ bool validateStringParameter(const String &param, unsigned min, unsigned max)
     logger->println("' passed");
     return true;
 }
+bool validateWiFiStringParameter(const String &param, unsigned min, unsigned max)
+{
+    if (param.length() < min || param.length() > max)
+        return false;
+    for (size_t i = 0; i < param.length(); i++)
+    {
+        if (!isPrintable(param[i]))
+            return false;
+    }
+    return true;
+}
 void Configuration::serialize(DynamicJsonDocument &document)
 {
     logger->println("serialize");
@@ -83,6 +94,10 @@ void Configuration::serialize(DynamicJsonDocument &document)
     document[FPSTR(HTML_ID_APPASS)] = APPassword;
     document[FPSTR(HTML_ID_APCHANNEL)] = APchannel;
     document[FPSTR(HTML_ID_APADDRESS)] = APaddress.toString();
+    document[FPSTR(HTML_ID_WIFI_SSID)] = WiFiSSID;
+    document[FPSTR(HTML_ID_WIFI_PASSWORD)] = WiFiPassword;
+    document[FPSTR(HTML_ID_FTP_LOGIN)] = FTPLogin;
+    document[FPSTR(HTML_ID_FTP_PASSWORD)] = FPSTR(FTP_PASSWORD_MASK);
 }
 void Configuration::deserialize(DynamicJsonDocument &document)
 {
@@ -95,6 +110,14 @@ void Configuration::deserialize(DynamicJsonDocument &document)
     APPassword = APPassword.isEmpty() ? FPSTR(DEFAULT_AP_PASS) : APPassword;
     APchannel = document[FPSTR(HTML_ID_APCHANNEL)] | DEFAULT_AP_CHANNEL;
     APaddress.fromString(document[FPSTR(HTML_ID_APADDRESS)].as<String>());
+    if (APaddress == IPAddress(0, 0, 0, 0))
+        APaddress = IPAddress(192, 168, 4, 1);
+    WiFiSSID = document[FPSTR(HTML_ID_WIFI_SSID)].as<String>();
+    WiFiPassword = document[FPSTR(HTML_ID_WIFI_PASSWORD)].as<String>();
+    FTPLogin = document[FPSTR(HTML_ID_FTP_LOGIN)].as<String>();
+    FTPLogin = FTPLogin.isEmpty() ? FPSTR(DEFAULT_FTP_LOGIN) : FTPLogin;
+    FTPPassword = document[FPSTR(HTML_ID_FTP_PASSWORD)].as<String>();
+    FTPPassword = FTPPassword.isEmpty() ? FPSTR(DEFAULT_FTP_PASS) : FTPPassword;
 }
 String Configuration::toUrlString()
 {
@@ -105,6 +128,10 @@ String Configuration::toUrlString()
     result += "&" + String(FPSTR(HTML_ID_APPASS)) + "=" + APPassword;
     result += "&" + String(FPSTR(HTML_ID_APCHANNEL)) + "=" + String(APchannel);
     result += "&" + String(FPSTR(HTML_ID_APADDRESS)) + "=" + APaddress.toString();
+    result += "&" + String(FPSTR(HTML_ID_WIFI_SSID)) + "=" + WiFiSSID;
+    result += "&" + String(FPSTR(HTML_ID_WIFI_PASSWORD)) + "=" + WiFiPassword;
+    result += "&" + String(FPSTR(HTML_ID_FTP_LOGIN)) + "=" + FTPLogin;
+    result += "&" + String(FPSTR(HTML_ID_FTP_PASSWORD)) + "=" + FPSTR(FTP_PASSWORD_MASK);
 
     return result;
 }
@@ -147,6 +174,33 @@ void Configuration::fromMapping(const std::map<String, String> &mapping)
     }
     if (mapping.find(String(FPSTR(HTML_ID_APADDRESS))) != mapping.end())
         APaddress.fromString(mapping.at(FPSTR(HTML_ID_APADDRESS)));
+
+    if (mapping.find(String(FPSTR(HTML_ID_WIFI_SSID))) != mapping.end())
+    {
+        String ssid = mapping.at(FPSTR(HTML_ID_WIFI_SSID));
+        if (!ssid.isEmpty() && validateWiFiStringParameter(ssid, 1, MAX_WIFI_SSID_LEN))
+            WiFiSSID = ssid;
+    }
+    if (mapping.find(String(FPSTR(HTML_ID_WIFI_PASSWORD))) != mapping.end())
+    {
+        String pass = mapping.at(FPSTR(HTML_ID_WIFI_PASSWORD));
+        if (pass != FPSTR(WIFI_PASSWORD_MASK) &&
+            validateWiFiStringParameter(pass, MIN_WIFI_PASS_LEN, MAX_WIFI_PASS_LEN))
+            WiFiPassword = pass;
+    }
+    if (mapping.find(String(FPSTR(HTML_ID_FTP_LOGIN))) != mapping.end())
+    {
+        String login = mapping.at(FPSTR(HTML_ID_FTP_LOGIN));
+        if (validateWiFiStringParameter(login, MIN_FTP_LOGIN_LEN, MAX_FTP_LOGIN_LEN))
+            FTPLogin = login;
+    }
+    if (mapping.find(String(FPSTR(HTML_ID_FTP_PASSWORD))) != mapping.end())
+    {
+        String pass = mapping.at(FPSTR(HTML_ID_FTP_PASSWORD));
+        if (pass != FPSTR(FTP_PASSWORD_MASK) &&
+            validateWiFiStringParameter(pass, MIN_FTP_PASS_LEN, MAX_FTP_PASS_LEN))
+            FTPPassword = pass;
+    }
 }
 bool JSONConfig::save(Configuration &data, File &configFile, size_t size)
 {
@@ -156,6 +210,7 @@ bool JSONConfig::save(Configuration &data, File &configFile, size_t size)
     DynamicJsonDocument doc(size);
 
     data.serialize(doc);
+    doc[FPSTR(HTML_ID_FTP_PASSWORD)] = data.FTPPassword;
     if (configFile)
     {
         serializeJson(doc, configFile);
@@ -198,10 +253,10 @@ bool JSONConfig::load(Configuration &data, File &configFile, size_t size)
 bool JSONConfig::read(const String &configFileName, Configuration &config, size_t size)
 {
     bool success = false;
-    if (!SPIFFS.exists(configFileName))
+    if (!LittleFS.exists(configFileName))
     {
         logger->println("creating default configuration file");
-        File configFile = SPIFFS.open(configFileName, "w");
+        File configFile = LittleFS.open(configFileName, "w");
         success = JSONConfig::save(config, configFile, size);
         configFile.close();
     }
@@ -211,7 +266,7 @@ bool JSONConfig::read(const String &configFileName, Configuration &config, size_
     }
     if (success)
     {
-        File configFile = SPIFFS.open(configFileName, "r");
+        File configFile = LittleFS.open(configFileName, "r");
         success = JSONConfig::load(config, configFile, size);
         configFile.close();
     }
@@ -220,7 +275,7 @@ bool JSONConfig::read(const String &configFileName, Configuration &config, size_
 bool JSONConfig::write(const String &configFileName, Configuration &config, size_t size)
 {
     bool success = false;
-    File configFile = SPIFFS.open(configFileName, "w");
+    File configFile = LittleFS.open(configFileName, "w");
     success = JSONConfig::save(config, configFile, size);
     configFile.close();
 

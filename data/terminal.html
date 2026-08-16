@@ -1,105 +1,135 @@
-<!DOCTYPE HTML>
-<html xmlns="http://www.w3.org/1999/xhtml">
-
+<!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>Terminal Emulator</title>
-    <script src="jquery-1.7.1.min.js"></script>
-    <script src="jquery.mousewheel-min.js"></script>
-    <script src="jquery.terminal.min.js"></script>
-    <link href="jquery.terminal.css" rel="stylesheet" />
-    <!--<script src="keyboard.js"></script>-->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wireless Terminal</title>
+    <link rel="stylesheet" href="xterm.css" />
+    <style>
+        html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#000; color:#ddd; font-family:Inter,Segoe UI,Arial,sans-serif; }
+        body { display:flex; flex-direction:column; }
+        #topbar { box-sizing:border-box; min-height:34px; padding:5px 8px; flex:0 0 auto; display:flex; align-items:center; gap:12px; background:#14181d; border-bottom:1px solid #2a3038; font:12px/18px sans-serif; }
+        #nav { flex:0 0 auto; display:flex; align-items:center; gap:4px; }
+        #nav a { color:#aab4bf; text-decoration:none; padding:3px 7px; border-radius:6px; }
+        #nav a:hover { color:#fff; background:#252b33; }
+        #status { flex:1 1 auto; min-width:0; color:#aaa; }
+        #status.connected { color:#7fd47f; }
+        #status.error { color:#ff7777; }
+        #terminal-controls { flex:0 0 auto; display:flex; align-items:center; gap:5px; color:#bbb; }
+        #line-ending { height:22px; border:1px solid #555; border-radius:5px; background:#101010; color:#ddd; font:12px sans-serif; }
+        #scrollback-input { box-sizing:border-box; width:76px; height:22px; padding:1px 4px; border:1px solid #555; border-radius:5px; background:#101010; color:#ddd; font:12px sans-serif; }
+        #scrollback-apply, #terminal-clear { height:22px; padding:1px 7px; border:1px solid #555; border-radius:5px; background:#2a2a2a; color:#ddd; cursor:pointer; font:12px sans-serif; }
+        #scrollback-apply:hover, #terminal-clear:hover { background:#3a414a; }
+        #terminal-wrap { box-sizing:border-box; flex:1 1 auto; min-height:0; padding:6px; overflow:hidden; }
+        #terminal { width:100%; height:100%; }
+        @media (max-width:820px) {
+            #topbar { flex-wrap:wrap; }
+            #status { order:3; flex-basis:100%; }
+            #terminal-controls { margin-left:auto; }
+        }
+    </style>
 </head>
-
 <body>
-    <span>New line symbol:</span>
-    <select name="newline_symbol" size="1" id="newline_symbol">
-        <option value="LF">LF</option>
-        <option value="CR" selected>CR</option>
-        <option value="CR+LF">CR+LF</option>
-    </select>
+    <div id="topbar">
+        <div id="nav"><a href="/">← Settings</a><a href="/status.html">Status</a></div>
+        <div id="status">WebSocket: connecting...</div>
+        <div id="terminal-controls">
+            <label for="line-ending">Line ending:</label>
+            <select id="line-ending"><option value="CR">CR</option><option value="LF">LF</option><option value="CRLF">CR+LF</option></select>
+            <label for="scrollback-input">Scrollback:</label>
+            <input type="number" id="scrollback-input" min="0" max="10000" step="1" />
+            <button type="button" id="scrollback-apply">Apply</button>
+            <button type="button" id="terminal-clear">Clear</button>
+        </div>
+    </div>
+    <div id="terminal-wrap"><div id="terminal"></div></div>
+    <script src="xterm.js"></script>
+    <script src="addon-fit.js"></script>
     <script>
-        var terminal;
-        var connection;
-        let CHUNK_SIZE = 512;
-        let WEBSOCKET_PORT = 81;
+        const WEBSOCKET_PORT = 81;
+        const TERMINAL_SCROLLBACK_KEY = 'webTerminalScrollback';
+        const TERMINAL_SCROLLBACK_DEFAULT = 1000;
+        const TERMINAL_SCROLLBACK_MAX = 10000;
+        const TERMINAL_LINE_ENDING_KEY = 'webTerminalLineEnding';
+        const TERMINAL_LINE_ENDING_DEFAULT = 'CR';
+        const statusElement = document.getElementById('status');
+        const lineEndingSelect = document.getElementById('line-ending');
+        const scrollbackInput = document.getElementById('scrollback-input');
+        const scrollbackApply = document.getElementById('scrollback-apply');
+        const terminalClear = document.getElementById('terminal-clear');
+        const encoder = new TextEncoder();
 
-        function getNewLineSymbol() {
-            let val = document.getElementById("newline_symbol").value;
-            let result = "?";
-            switch (val) {
-                case "LF":
-                    result = '\n';
-                    break;
-                case "CR":
-                    result = '\r';
-                    break;
-                case "CR+LF":
-                    result = '\r\n';
-                    break;
+        function normalizeScrollback(value) {
+            const parsed = Number.parseInt(value, 10);
+            return Number.isFinite(parsed) ? Math.max(0, Math.min(TERMINAL_SCROLLBACK_MAX, parsed)) : TERMINAL_SCROLLBACK_DEFAULT;
+        }
+        function loadScrollback() {
+            try {
+                const stored = localStorage.getItem(TERMINAL_SCROLLBACK_KEY);
+                return stored === null ? TERMINAL_SCROLLBACK_DEFAULT : normalizeScrollback(stored);
+            } catch (error) { return TERMINAL_SCROLLBACK_DEFAULT; }
+        }
+        function saveScrollback(value) { try { localStorage.setItem(TERMINAL_SCROLLBACK_KEY, String(value)); } catch (error) {} }
+        function normalizeLineEnding(value) { return value === 'LF' || value === 'CRLF' ? value : 'CR'; }
+        function loadLineEnding() {
+            try {
+                const stored = localStorage.getItem(TERMINAL_LINE_ENDING_KEY);
+                return stored === null ? TERMINAL_LINE_ENDING_DEFAULT : normalizeLineEnding(stored);
+            } catch (error) { return TERMINAL_LINE_ENDING_DEFAULT; }
+        }
+        function saveLineEnding(value) { try { localStorage.setItem(TERMINAL_LINE_ENDING_KEY, normalizeLineEnding(value)); } catch (error) {} }
+        function sendEnter() {
+            switch (lineEndingSelect.value) {
+                case 'LF': sendBytes(new Uint8Array([0x0a])); break;
+                case 'CRLF': sendBytes(new Uint8Array([0x0d,0x0a])); break;
+                default: sendBytes(new Uint8Array([0x0d])); break;
             }
-            return result;
         }
-        function chunkString(str, length = 10) {
-            let result = [],
-                offset = 0;
 
-            if (str.length <= length)
-                return result.push(str) && result;
+        const initialScrollback = loadScrollback();
+        scrollbackInput.value = initialScrollback;
+        lineEndingSelect.value = loadLineEnding();
 
-            while (offset < str.length) {
-                result.push(str.substr(offset, length));
-                offset += length;
-            }
-            return result;
+        const terminal = new Terminal({ cursorBlink:true, convertEol:false, scrollback:initialScrollback, fontFamily:'Consolas, "Courier New", monospace', fontSize:14, theme:{background:'#000000'} });
+        const fitAddon = new FitAddon.FitAddon();
+        terminal.loadAddon(fitAddon);
+        terminal.open(document.getElementById('terminal'));
+        fitAddon.fit();
+        terminal.focus();
+
+        function applyScrollback() {
+            const value = normalizeScrollback(scrollbackInput.value);
+            scrollbackInput.value = value;
+            terminal.options.scrollback = value;
+            saveScrollback(value);
+            terminal.focus();
         }
-        jQuery(function ($) {
-            terminal = $('body').terminal(function (command, term) {
+        lineEndingSelect.addEventListener('change', function() { saveLineEnding(lineEndingSelect.value); terminal.focus(); });
+        scrollbackApply.addEventListener('click', applyScrollback);
+        scrollbackInput.addEventListener('keydown', function(event) { if (event.key === 'Enter') { event.preventDefault(); applyScrollback(); } });
 
-                if (command == "") {
-                    connection.send(getNewLineSymbol())
-                } else {
-                    //connection.send(command + getNewLineSymbol());
-                    let chunks = chunkString(command, CHUNK_SIZE);
-                    for (let index = 0; index < chunks.length; index++) {
-                        if (index + 1 == chunks.length)
-                            connection.send(command + getNewLineSymbol());
-                        else
-                            connection.send(command);
-                    }
-                }
-            }, {
-                // wrap: false,
-                echoCommand: false,
-                linksNoReferer: true,
-                greetings: "[[;lightgreen;]web terminal started]",
-                prompt: ":"
-            });
-        })
-        function connectToServer() {
-            connection = new WebSocket(`ws://${location.hostname}:${WEBSOCKET_PORT}/`);
-            connection.onopen = function (e) {
-                terminal.echo("[[;lightgreen;]connection opened]");
-            };
-            connection.onmessage = function (event) {
-                if (terminal) {
-                    terminal.echo(event.data);
-                }
-            };
-            connection.onclose = function (event) {
-                if (event.wasClean) {
-                    terminal.error(`[[;lightgreen;]connection closed code=${event.code}]`);
-                } else {
-                    terminal.error("[connection aborted, try refresh page]");
-                }
-            };
-            connection.onerror = function (error) {
-                terminal.error(`[error ${error.message}]`);
-            };
-        }
-        connectToServer();
+        const connection = new WebSocket(`ws://${location.hostname}:${WEBSOCKET_PORT}/`);
+        connection.binaryType = 'arraybuffer';
+        function setStatus(text, state) { statusElement.textContent = text; statusElement.className = state || ''; }
+        function sendBytes(bytes) { if (connection.readyState === WebSocket.OPEN) connection.send(bytes); }
+        terminalClear.addEventListener('click', function() { terminal.clear(); terminal.focus(); });
+        connection.onopen = function() { setStatus('WebSocket: connected','connected'); fitAddon.fit(); terminal.focus(); };
+        connection.onmessage = function(event) {
+            if (event.data instanceof ArrayBuffer) { terminal.write(new Uint8Array(event.data)); return; }
+            if (event.data instanceof Blob) { event.data.arrayBuffer().then(buffer => terminal.write(new Uint8Array(buffer))); return; }
+            terminal.write(String(event.data));
+        };
+        connection.onclose = function(event) { setStatus(`WebSocket: closed (code ${event.code}${event.reason ? ', ' + event.reason : ''})`, event.wasClean ? '' : 'error'); };
+        connection.onerror = function() { setStatus('WebSocket: connection error','error'); };
+        terminal.onData(function(data) { if (data === '\r') { sendEnter(); return; } sendBytes(encoder.encode(data)); });
+        terminal.onBinary(function(data) {
+            const bytes = new Uint8Array(data.length);
+            for (let i=0;i<data.length;i++) bytes[i] = data.charCodeAt(i) & 0xff;
+            sendBytes(bytes);
+        });
+        let resizeTimer;
+        window.addEventListener('resize', function() { clearTimeout(resizeTimer); resizeTimer=setTimeout(function(){ fitAddon.fit(); terminal.focus(); },50); });
+        window.addEventListener('focus', function() { terminal.focus(); });
     </script>
 </body>
-
 </html>
