@@ -481,7 +481,10 @@ void Application::handleGetSettings()
     String serializedData;
     DynamicJsonDocument doc(CONFIG_SIZE);
     _settings->serialize(doc);
-    doc[FPSTR(HTML_ID_WIFI_PASSWORD)] = _settings->WiFiPassword.isEmpty() ? "" : FPSTR(WIFI_PASSWORD_MASK);
+    if (_settings->WiFiPassword.isEmpty())
+        doc[FPSTR(HTML_ID_WIFI_PASSWORD)] = "";
+    else
+        doc[FPSTR(HTML_ID_WIFI_PASSWORD)] = FPSTR(WIFI_PASSWORD_MASK);
     serializeJson(doc, serializedData);
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), serializedData);
 }
