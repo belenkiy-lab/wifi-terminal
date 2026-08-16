@@ -54,6 +54,11 @@
             <div class="row"><div class="label">Connection</div><div class="value" id="connection">Loading...</div></div>
             <div class="row"><div class="label">Uptime</div><div class="value" id="uptime">--</div></div>
             <div class="row"><div class="label">Reset reason</div><div class="value" id="reset_reason">--</div></div>
+            <div class="row"><div class="label">UART RX overruns</div><div class="value" id="uart_rx_overruns">--</div></div>
+            <div class="row"><div class="label">LittleFS</div><div class="value" id="littlefs">--</div></div>
+            <div class="row"><div class="label">UART debug</div><div class="value" id="debug_state">--</div></div>
+            <div class="row"><div class="label">Debug log</div><div class="value" id="debug_log">--</div></div>
+            <div class="row"><div class="label">Dropped debug records</div><div class="value" id="debug_dropped_records">--</div></div>
         </section>
         <div class="actions"><a class="terminal" href="/terminal.html">RUN TERMINAL</a></div>
     </main>
@@ -64,6 +69,12 @@
             const minutes = Math.floor((totalSeconds % 3600) / 60);
             const seconds = totalSeconds % 60;
             return days + 'd ' + String(hours).padStart(2,'0') + ':' + String(minutes).padStart(2,'0') + ':' + String(seconds).padStart(2,'0');
+        }
+        function formatBytes(value) {
+            const bytes = Number(value) || 0;
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KiB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MiB';
         }
         function updateStatus() {
             fetch('/status', {cache:'no-store'})
@@ -77,6 +88,13 @@
                     connection.className = 'value online';
                     document.getElementById('uptime').textContent = formatUptime(status.uptime);
                     document.getElementById('reset_reason').textContent = status.reset_reason || '--';
+                    document.getElementById('uart_rx_overruns').textContent = status.uart_rx_overruns;
+                    document.getElementById('littlefs').textContent = formatBytes(status.littlefs_used) + ' used / ' + formatBytes(status.littlefs_total) + ' total / ' + formatBytes(status.littlefs_free) + ' free';
+                    let debugState = status.debug_enabled ? 'ON' : 'OFF';
+                    if (status.debug_limit_reached) debugState += ' · limit reached';
+                    document.getElementById('debug_state').textContent = debugState;
+                    document.getElementById('debug_log').textContent = formatBytes(status.debug_log_bytes) + (status.debug_log_limit ? ' / ' + formatBytes(status.debug_log_limit) : '') + ' · /debug.log';
+                    document.getElementById('debug_dropped_records').textContent = status.debug_dropped_records;
                 })
                 .catch(function() {
                     const connection = document.getElementById('connection');
