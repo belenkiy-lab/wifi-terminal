@@ -60,22 +60,29 @@ bool validateParameter_sbaud(long sbaud)
 bool validateStringParameter(const String &param, unsigned min, unsigned max)
 {
     logger->print("validate string parameter: '" + param);
-    if (param.length() < min || param.length() > max)
+    if (param.length() >= min && param.length() <= max)
     {
-        logger->println("' failed");
-        return false;
-    }
+        for (size_t i = 0; i < param.length(); i++)
+        {
+            if (isPrintable(param[i]))
+                continue;
 
+            logger->println("' failed");
+            return false;
+        }
+    }
+    logger->println("' passed");
+    return true;
+}
+bool validateWiFiStringParameter(const String &param, unsigned min, unsigned max)
+{
+    if (param.length() < min || param.length() > max)
+        return false;
     for (size_t i = 0; i < param.length(); i++)
     {
-        if (isPrintable(param[i]))
-            continue;
-
-        logger->println("' failed");
-        return false;
+        if (!isPrintable(param[i]))
+            return false;
     }
-
-    logger->println("' passed");
     return true;
 }
 void Configuration::serialize(DynamicJsonDocument &document)
@@ -163,14 +170,14 @@ void Configuration::fromMapping(const std::map<String, String> &mapping)
     if (mapping.find(String(FPSTR(HTML_ID_WIFI_SSID))) != mapping.end())
     {
         String ssid = mapping.at(FPSTR(HTML_ID_WIFI_SSID));
-        if (!ssid.isEmpty() && validateStringParameter(ssid, 1, MAX_WIFI_SSID_LEN))
+        if (!ssid.isEmpty() && validateWiFiStringParameter(ssid, 1, MAX_WIFI_SSID_LEN))
             WiFiSSID = ssid;
     }
     if (mapping.find(String(FPSTR(HTML_ID_WIFI_PASSWORD))) != mapping.end())
     {
         String pass = mapping.at(FPSTR(HTML_ID_WIFI_PASSWORD));
         if (pass != FPSTR(WIFI_PASSWORD_MASK) &&
-            validateStringParameter(pass, MIN_WIFI_PASS_LEN, MAX_WIFI_PASS_LEN))
+            validateWiFiStringParameter(pass, MIN_WIFI_PASS_LEN, MAX_WIFI_PASS_LEN))
             WiFiPassword = pass;
     }
 }
