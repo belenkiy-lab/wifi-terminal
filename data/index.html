@@ -27,6 +27,11 @@
         label { color:#c5cdd6; font-size:13px; }
         input, select { width:100%; min-height:38px; padding:7px 10px; border:1px solid #353d47; border-radius:8px; background:var(--panel2); color:var(--text); outline:none; }
         input:focus, select:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(46,168,255,.13); }
+        .debug-toggle { display:flex; align-items:flex-start; gap:10px; padding:10px 0 2px; }
+        .debug-toggle input { width:auto; min-height:0; margin-top:2px; accent-color:var(--accent); }
+        .debug-copy { display:flex; flex-direction:column; gap:4px; }
+        .debug-copy small { color:var(--muted); line-height:1.35; }
+        .debug-state { margin-top:8px; color:var(--muted); font:12px Consolas,"Courier New",monospace; }
         .actions { margin-top:18px; display:flex; justify-content:center; }
         .save { min-width:240px; padding:12px 22px; border:1px solid #d85b67; border-radius:10px; background:var(--danger); color:#fff; font-weight:700; cursor:pointer; }
         .save:hover { filter:brightness(1.08); }
@@ -89,6 +94,14 @@
                         <label for="terminal_scrollback">Scrollback lines</label>
                         <input type="number" min="0" max="10000" step="1" id="terminal_scrollback" value="1000" />
                     </div>
+                    <div class="debug-toggle">
+                        <input type="checkbox" id="uart_debug" />
+                        <div class="debug-copy">
+                            <label for="uart_debug">UART debug until reboot</label>
+                            <small>Logs RX UART and TX WEB/TCP/SYS to /debug.log. A new session replaces the previous log.</small>
+                        </div>
+                    </div>
+                    <div class="debug-state" id="uart_debug_state">Debug: loading...</div>
                 </section>
 
                 <section class="card full">
@@ -121,6 +134,9 @@
         const TERMINAL_SCROLLBACK_KEY = 'webTerminalScrollback';
         const TERMINAL_SCROLLBACK_DEFAULT = 1000;
         const TERMINAL_SCROLLBACK_MAX = 10000;
+        const debugCheckbox = document.getElementById('uart_debug');
+        const debugState = document.getElementById('uart_debug_state');
+        let debugBusy = false;
 
         function setValue(id, value) { document.getElementById(id).value = value; }
         function normalizeScrollback(value) {
@@ -148,10 +164,31 @@
             const seconds = totalSeconds % 60;
             return days + 'd ' + String(hours).padStart(2,'0') + ':' + String(minutes).padStart(2,'0') + ':' + String(seconds).padStart(2,'0');
         }
-        function updateUptime() {
+        function formatBytes(value) {
+            const bytes = Number(value) || 0;
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KiB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MiB';
+        }
+        function applyDebugStatus(status) {
+            debugCheckbox.checked = !!status.debug_enabled;
+            if (status.debug_limit_reached) {
+                debugState.textContent = 'Debug: stopped at limit (' + formatBytes(status.debug_log_bytes) + ')';
+            } else if (status.debug_enabled) {
+                debugState.textContent = 'Debug: ON · ' + formatBytes(status.debug_log_bytes) + ' / ' + formatBytes(status.debug_log_limit);
+            } else if (Number(status.debug_log_bytes) > 0) {
+                debugState.textContent = 'Debug: OFF · saved ' + formatBytes(status.debug_log_bytes) + ' in /debug.log';
+            } else {
+                debugState.textContent = 'Debug: OFF';
+            }
+        }
+        function updateStatus() {
             fetch('/status', { cache:'no-store' })
                 .then(r => r.json())
-                .then(status => document.getElementById('uptime').textContent = 'Uptime: ' + formatUptime(status.uptime))
+                .then(status => {
+                    document.getElementById('uptime').textContent = 'Uptime: ' + formatUptime(status.uptime);
+                    if (!debugBusy) applyDebugStatus(status);
+                })
                 .catch(() => document.getElementById('uptime').textContent = 'Uptime: unavailable');
         }
 
@@ -162,12 +199,35 @@
                 setValue('password', settings.password); setValue('channel', settings.channel); setValue('address', settings.address);
             });
 
+        debugCheckbox.addEventListener('change', function() {
+            if (debugBusy) return;
+            debugBusy = true;
+            debugCheckbox.disabled = true;
+            const endpoint = debugCheckbox.checked ? '/debug/start' : '/debug/stop';
+            fetch(endpoint, { method:'POST', cache:'no-store' })
+                .then(async response => {
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(payload.error || ('HTTP ' + response.status));
+                    return payload;
+                })
+                .then(() => updateStatus())
+                .catch(error => {
+                    debugCheckbox.checked = !debugCheckbox.checked;
+                    debugState.textContent = 'Debug error: ' + error.message;
+                })
+                .finally(() => {
+                    debugBusy = false;
+                    debugCheckbox.disabled = false;
+                    updateStatus();
+                });
+        });
+
         loadScrollback();
         document.getElementById('terminal_scrollback').addEventListener('change', saveScrollback);
         document.getElementById('settings_form').addEventListener('submit', saveScrollback);
         document.getElementById('start_terminal').addEventListener('click', function() { saveScrollback(); location.href='/terminal.html'; });
-        updateUptime();
-        setInterval(updateUptime, 1000);
+        updateStatus();
+        setInterval(updateStatus, 1000);
     </script>
 </body>
 </html>
