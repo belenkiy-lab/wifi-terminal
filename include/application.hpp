@@ -33,6 +33,8 @@ static const char HTTP_DEBUG_STOP_LINK[] PROGMEM = "/debug/stop";
 static const char HTTP_WIFI_DELETE_LINK[] PROGMEM = "/wifi/delete";
 static const char HTTP_SAVE_LINK[] PROGMEM = "/save";
 static const char HTTP_ROOT_LINK[] PROGMEM = "/";
+#define FTP_LOGIN_ (_settings->FTPLogin.c_str())
+#define FTP_PASSWORD_ (_settings->FTPPassword.c_str())
 
 const IPAddress DEFAULT_AP_GATEWAY(0, 0, 0, 0);
 const IPAddress DEFAULT_AP_MASK(255, 255, 255, 0);
