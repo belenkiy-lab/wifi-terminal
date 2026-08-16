@@ -137,15 +137,209 @@ void Application::handleGetSettings()
     serializeJson(doc, serializedData);
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_TEXT_PLAIN), serializedData);
 }
+size_t Application::getDebugLogSize()
+{
+    size_t size = _uartDebugLogBytes + _uartDebugBufferLen;
+    if (!_uartDebugEnabled && LittleFS.exists(FPSTR(DEBUG_LOG_FILENAME)))
+    {
+        File file = LittleFS.open(FPSTR(DEBUG_LOG_FILENAME), "r");
+        if (file)
+        {
+            size = file.size();
+            file.close();
+        }
+    }
+    return size;
+}
 void Application::handleGetStatus()
 {
+    FSInfo fsInfo;
+    LittleFS.info(fsInfo);
+
     String serializedData;
-    StaticJsonDocument<160> doc;
+    StaticJsonDocument<512> doc;
     doc["uptime"] = millis() / 1000UL;
     doc["reset_reason"] = ESP.getResetReason();
     doc["uart_rx_overruns"] = uartRxOverrunCount;
+    doc["littlefs_total"] = fsInfo.totalBytes;
+    doc["littlefs_used"] = fsInfo.usedBytes;
+    doc["littlefs_free"] = fsInfo.totalBytes >= fsInfo.usedBytes ? fsInfo.totalBytes - fsInfo.usedBytes : 0;
+    doc["debug_enabled"] = _uartDebugEnabled;
+    doc["debug_limit_reached"] = _uartDebugLimitReached;
+    doc["debug_log_bytes"] = getDebugLogSize();
+    doc["debug_log_limit"] = _uartDebugLogLimit;
+    doc["debug_dropped_records"] = _uartDebugDroppedRecords;
     serializeJson(doc, serializedData);
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), serializedData);
+}
+void Application::appendDebugText(const char *text)
+{
+    if (!_uartDebugEnabled || !text)
+        return;
+
+    size_t length = strlen(text);
+    if (length >= DEBUG_RAM_BUFFER_SIZE)
+    {
+        _uartDebugDroppedRecords++;
+        return;
+    }
+
+    if (_uartDebugBufferLen + length > DEBUG_RAM_BUFFER_SIZE)
+        flushDebugLog(true);
+
+    if (!_uartDebugEnabled || _uartDebugBufferLen + length > DEBUG_RAM_BUFFER_SIZE)
+    {
+        _uartDebugDroppedRecords++;
+        return;
+    }
+
+    memcpy(_uartDebugBuffer + _uartDebugBufferLen, text, length);
+    _uartDebugBufferLen += length;
+}
+void Application::appendDebugRecord(const char *source, const uint8_t *data, size_t length)
+{
+    if (!_uartDebugEnabled || !data || !length)
+        return;
+
+    const size_t bytesPerRecord = 96;
+    size_t offset = 0;
+    while (offset < length && _uartDebugEnabled)
+    {
+        size_t chunkLength = std::min(bytesPerRecord, length - offset);
+        char line[640];
+        size_t pos = 0;
+        unsigned long now = millis();
+        int headerLen = snprintf(line, sizeof(line), "%lu.%03lu %-7s ", now / 1000UL, now % 1000UL, source);
+        if (headerLen < 0)
+            return;
+        pos = static_cast<size_t>(headerLen);
+
+        for (size_t i = 0; i < chunkLength && pos + 5 < sizeof(line); i++)
+        {
+            uint8_t value = data[offset + i];
+            if (value == '\\' || value == '"')
+            {
+                line[pos++] = '\\';
+                line[pos++] = static_cast<char>(value);
+            }
+            else if (value == '\r')
+            {
+                line[pos++] = '\\'; line[pos++] = 'r';
+            }
+            else if (value == '\n')
+            {
+                line[pos++] = '\\'; line[pos++] = 'n';
+            }
+            else if (value == '\t')
+            {
+                line[pos++] = '\\'; line[pos++] = 't';
+            }
+            else if (value >= 0x20 && value <= 0x7e)
+            {
+                line[pos++] = static_cast<char>(value);
+            }
+            else
+            {
+                int written = snprintf(line + pos, sizeof(line) - pos, "\\x%02X", value);
+                if (written < 0)
+                    break;
+                pos += static_cast<size_t>(written);
+            }
+        }
+        line[pos++] = '\n';
+        line[pos] = '\0';
+        appendDebugText(line);
+        offset += chunkLength;
+    }
+}
+void Application::flushDebugLog(bool force)
+{
+    if (!_uartDebugEnabled || !_uartDebugBufferLen)
+        return;
+
+    unsigned long now = millis();
+    if (!force && _uartDebugBufferLen < DEBUG_FLUSH_THRESHOLD &&
+        now - _uartDebugLastFlushMs < DEBUG_FLUSH_INTERVAL_MS)
+        return;
+
+    if (_uartDebugLogBytes >= _uartDebugLogLimit)
+    {
+        _uartDebugBufferLen = 0;
+        _uartDebugLimitReached = true;
+        _uartDebugEnabled = false;
+        return;
+    }
+
+    size_t remaining = _uartDebugLogLimit - _uartDebugLogBytes;
+    size_t writeLength = std::min(_uartDebugBufferLen, remaining);
+    File file = LittleFS.open(FPSTR(DEBUG_LOG_FILENAME), "a");
+    if (!file)
+    {
+        _uartDebugDroppedRecords++;
+        _uartDebugBufferLen = 0;
+        _uartDebugEnabled = false;
+        return;
+    }
+
+    size_t written = file.write(reinterpret_cast<const uint8_t *>(_uartDebugBuffer), writeLength);
+    file.close();
+    _uartDebugLogBytes += written;
+    _uartDebugLastFlushMs = now;
+
+    if (written < writeLength)
+    {
+        _uartDebugDroppedRecords++;
+        _uartDebugEnabled = false;
+    }
+
+    if (writeLength < _uartDebugBufferLen || _uartDebugLogBytes >= _uartDebugLogLimit)
+    {
+        _uartDebugLimitReached = true;
+        _uartDebugEnabled = false;
+    }
+    _uartDebugBufferLen = 0;
+}
+void Application::handleDebugStart()
+{
+    if (_uartDebugEnabled)
+    {
+        _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), "{\"enabled\":true}");
+        return;
+    }
+
+    if (LittleFS.exists(FPSTR(DEBUG_LOG_FILENAME)))
+        LittleFS.remove(FPSTR(DEBUG_LOG_FILENAME));
+
+    FSInfo fsInfo;
+    LittleFS.info(fsInfo);
+    size_t freeBytes = fsInfo.totalBytes >= fsInfo.usedBytes ? fsInfo.totalBytes - fsInfo.usedBytes : 0;
+    size_t availableForLog = freeBytes > DEBUG_FS_RESERVE_BYTES ? freeBytes - DEBUG_FS_RESERVE_BYTES : 0;
+    _uartDebugLogLimit = std::min(DEBUG_MAX_LOG_BYTES, availableForLog);
+    _uartDebugLogBytes = 0;
+    _uartDebugBufferLen = 0;
+    _uartDebugDroppedRecords = 0;
+    _uartDebugLimitReached = false;
+    _uartDebugLastFlushMs = millis();
+
+    if (!_uartDebugLogLimit)
+    {
+        _WebServer->send(507, FPSTR(HTTP_APPLICATION_JSON), "{\"enabled\":false,\"error\":\"not enough LittleFS space\"}");
+        return;
+    }
+
+    _uartDebugEnabled = true;
+    appendDebugText("# Wireless Terminal UART debug session\n");
+    appendDebugText("# format: seconds.millis SOURCE escaped-bytes\n");
+    _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), "{\"enabled\":true}");
+}
+void Application::handleDebugStop()
+{
+    if (_uartDebugEnabled)
+    {
+        flushDebugLog(true);
+        _uartDebugEnabled = false;
+    }
+    _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), "{\"enabled\":false}");
 }
 void Application::handleTerminalClient()
 {
@@ -158,16 +352,23 @@ void Application::handleTerminalClient()
         }
         _terminalClient = _terminalServer->accept();
         logger->println("Client connected to telnet server");
-        Serial.write('\r');
+        const uint8_t wakeup = '\r';
+        appendDebugRecord("TX SYS", &wakeup, 1);
+        Serial.write(wakeup);
     }
 
     size_t tcpToSerial = 0;
+    uint8_t debugBuffer[TCP_TO_SERIAL_MAX_PER_LOOP];
     while (_terminalClient.available() && Serial.availableForWrite() > 0 &&
            tcpToSerial < TCP_TO_SERIAL_MAX_PER_LOOP)
     {
-        Serial.write(_terminalClient.read());
+        uint8_t value = static_cast<uint8_t>(_terminalClient.read());
+        debugBuffer[tcpToSerial] = value;
+        Serial.write(value);
         tcpToSerial++;
     }
+    if (tcpToSerial)
+        appendDebugRecord("TX TCP", debugBuffer, tcpToSerial);
 }
 void Application::handleSerialInput()
 {
@@ -187,6 +388,8 @@ void Application::handleSerialInput()
     size_t serialGotBytesCount = Serial.readBytes(buffer, bufferLen);
     if (!serialGotBytesCount)
         return;
+
+    appendDebugRecord("RX UART", buffer, serialGotBytesCount);
 
     if (_terminalClient.connected())
     {
@@ -209,7 +412,9 @@ void Application::handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payl
     {
         logger->printf("ws client #%u connected from:", num);
         logger->println(_webSockServer->remoteIP(num));
-        Serial.write('\r');
+        const uint8_t wakeup = '\r';
+        appendDebugRecord("TX SYS", &wakeup, 1);
+        Serial.write(wakeup);
     }
     else if (type == WStype_DISCONNECTED)
     {
@@ -218,6 +423,7 @@ void Application::handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payl
     else if (type == WStype_TEXT || type == WStype_BIN)
     {
         logger->write(payload, length);
+        appendDebugRecord("TX WEB", payload, length);
         Serial.write(payload, length);
     }
 }
@@ -246,6 +452,8 @@ void Application::initialize()
     _WebServer->on(FPSTR(HTTP_SAVE_LINK), [&]() mutable { this->handleSettingsSave(); });
     _WebServer->on(FPSTR(HTTP_CONF_LINK), [&]() mutable { this->handleGetSettings(); });
     _WebServer->on(FPSTR(HTTP_STATUS_LINK), [&]() mutable { this->handleGetStatus(); });
+    _WebServer->on(FPSTR(HTTP_DEBUG_START_LINK), HTTP_POST, [&]() mutable { this->handleDebugStart(); });
+    _WebServer->on(FPSTR(HTTP_DEBUG_STOP_LINK), HTTP_POST, [&]() mutable { this->handleDebugStop(); });
     _WebServer->onNotFound([&]() mutable { handleNotFound();});
     _WebServer->begin();
 
@@ -265,6 +473,7 @@ void Application::mainloop()
     _WebServer->handleClient();
     this->handleTerminalClient();
     this->handleSerialInput();
+    flushDebugLog();
 
     if (Serial.hasOverrun())
     {
