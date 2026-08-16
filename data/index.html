@@ -80,6 +80,13 @@
                 </section>
 
                 <section class="card full">
+                    <h2>FTP access</h2>
+                    <div class="field"><label for="ftp_login">FTP login</label><input type="text" name="ftp_login" id="ftp_login" minlength="1" maxlength="32" required /></div>
+                    <div class="field"><label for="ftp_password">FTP password</label><input type="password" name="ftp_password" id="ftp_password" minlength="8" maxlength="64" required /></div>
+                    <p class="hint">Default credentials are admin / admin. ******** means the saved password is unchanged. New passwords must be 8–64 printable characters.</p>
+                </section>
+
+                <section class="card full">
                     <h2>Wi-Fi client</h2>
                     <div class="field"><label for="wifi_ssid">Wi-Fi SSID</label><input type="text" name="wifi_ssid" id="wifi_ssid" maxlength="32" placeholder="home / office Wi-Fi" /></div>
                     <div class="field"><label for="wifi_password">Wi-Fi password</label><input type="password" name="wifi_password" id="wifi_password" maxlength="64" placeholder="min. 8 characters" /></div>
@@ -115,7 +122,7 @@
         function updateStatus(){fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(status=>{document.getElementById('uptime').textContent='Uptime: '+formatUptime(status.uptime);if(!debugBusy)applyDebugStatus(status);}).catch(()=>document.getElementById('uptime').textContent='Uptime: unavailable');}
 
         fetch('/configure',{cache:'no-store'}).then(r=>r.json()).then(settings=>{
-            setValue('baud',settings.baud);setValue('config',settings.config);setValue('SSID',settings.SSID);setValue('password',settings.password);setValue('channel',settings.channel);setValue('address',settings.address);setValue('wifi_ssid',settings.wifi_ssid);setValue('wifi_password',settings.wifi_password);
+            setValue('baud',settings.baud);setValue('config',settings.config);setValue('SSID',settings.SSID);setValue('password',settings.password);setValue('channel',settings.channel);setValue('address',settings.address);setValue('wifi_ssid',settings.wifi_ssid);setValue('wifi_password',settings.wifi_password);setValue('ftp_login',settings.ftp_login);setValue('ftp_password',settings.ftp_password);
         });
 
         debugCheckbox.addEventListener('change',function(){if(debugBusy)return;debugBusy=true;debugCheckbox.disabled=true;const endpoint=debugCheckbox.checked?'/debug/start':'/debug/stop';fetch(endpoint,{method:'POST',cache:'no-store'}).then(async response=>{const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||('HTTP '+response.status));return payload;}).then(()=>updateStatus()).catch(error=>{debugCheckbox.checked=!debugCheckbox.checked;debugState.textContent='Debug error: '+error.message;}).finally(()=>{debugBusy=false;debugCheckbox.disabled=false;updateStatus();});});
