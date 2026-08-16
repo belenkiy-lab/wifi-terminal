@@ -22,6 +22,19 @@
 
 static uint32_t uartRxOverrunCount = 0;
 
+struct ResetRecoveryState
+{
+    uint32_t magic;
+    uint32_t count;
+    uint32_t checksum;
+    uint32_t reserved;
+};
+
+static uint32_t resetRecoveryChecksum(uint32_t count)
+{
+    return RTC_RESET_MAGIC ^ count ^ 0xA55A3CC3UL;
+}
+
 enum class TerminalResponseType : uint8_t
 {
     None,
@@ -242,65 +255,180 @@ Application::Application()
 {
     _settings = new Configuration();
     _terminalServer = new WiFiServer(DEFAULT_TERMINAL_SERVER_PORT);
-
     _webSockServer = new WebSocketsServer(WEBSOCKET_PORT_);
-
     _WebServer = new ESP8266WebServer(WEB_SERVER_PORT);
     _FTPServer = new FtpServer();
     _blinker = new Ticker();
 }
-bool Application::startAP()
+
+void Application::clearResetRecovery()
 {
-    bool result = false;
+    ResetRecoveryState state = {};
+    ESP.rtcUserMemoryWrite(RTC_RESET_OFFSET, reinterpret_cast<uint32_t *>(&state), sizeof(state));
+    _resetSequenceArmed = false;
+}
+
+void Application::initializeResetRecovery()
+{
+    ResetRecoveryState state = {};
+    const bool externalReset = ESP.getResetReason() == "External System";
+
+    if (!externalReset)
+    {
+        clearResetRecovery();
+        _resetDetectorReadyMs = millis();
+        return;
+    }
+
+    bool valid = ESP.rtcUserMemoryRead(RTC_RESET_OFFSET, reinterpret_cast<uint32_t *>(&state), sizeof(state)) &&
+                 state.magic == RTC_RESET_MAGIC &&
+                 state.checksum == resetRecoveryChecksum(state.count) &&
+                 state.count > 0 && state.count < 3;
+
+    uint32_t count = valid ? state.count + 1 : 1;
+    if (count >= 3)
+    {
+        _forcedAP = true;
+        clearResetRecovery();
+    }
+    else
+    {
+        state.magic = RTC_RESET_MAGIC;
+        state.count = count;
+        state.checksum = resetRecoveryChecksum(count);
+        state.reserved = 0;
+        ESP.rtcUserMemoryWrite(RTC_RESET_OFFSET, reinterpret_cast<uint32_t *>(&state), sizeof(state));
+        _resetSequenceArmed = true;
+    }
+
+    _resetDetectorReadyMs = millis();
+
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(90);
+    digitalWrite(LED_BUILTIN, HIGH);
+}
+
+void Application::serviceResetRecoveryWindow()
+{
+    if (_resetSequenceArmed && millis() >= RESET_SEQUENCE_WINDOW_MS)
+        clearResetRecovery();
+}
+
+bool Application::startAP(const String &reason)
+{
+    WiFi.disconnect();
+    delay(20);
     WiFi.mode(WIFI_AP);
 
     if (!WiFi.softAPConfig(_settings->APaddress, DEFAULT_AP_GATEWAY, DEFAULT_AP_MASK))
     {
         logger->println("AP Config Failed");
+        return false;
     }
-    else if (WiFi.softAP(_settings->APSSID, _settings->APPassword, _settings->APchannel))
-    {
-        logger->println("\nnetwork " + _settings->APSSID + " running");
-        logger->println("AP IP address: " + WiFi.softAPIP().toString());
-        result = true;
-    }
-    else
+
+    if (!WiFi.softAP(_settings->APSSID, _settings->APPassword, _settings->APchannel))
     {
         logger->println("starting AP failed");
+        return false;
     }
-    return result;
+
+    _networkMode = NetworkMode::AccessPoint;
+    _apReason = reason;
+    _stationLostSinceMs = 0;
+    _networkReadyMs = millis();
+    logger->println("\nnetwork " + _settings->APSSID + " running");
+    logger->println("AP IP address: " + WiFi.softAPIP().toString());
+    logger->println("AP reason: " + _apReason);
+    return true;
 }
+
+bool Application::startStation()
+{
+    if (_settings->WiFiSSID.isEmpty() || _settings->WiFiPassword.isEmpty())
+        return false;
+
+    WiFi.mode(WIFI_STA);
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
+    WiFi.begin(_settings->WiFiSSID.c_str(), _settings->WiFiPassword.c_str());
+
+    logger->println("connecting to Wi-Fi: " + _settings->WiFiSSID);
+    const unsigned long started = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - started < WIFI_CONNECT_TIMEOUT_MS)
+    {
+        serviceResetRecoveryWindow();
+        delay(25);
+        yield();
+    }
+
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        WiFi.disconnect();
+        return false;
+    }
+
+    _networkMode = NetworkMode::Station;
+    _apReason = "";
+    _stationLostSinceMs = 0;
+    _networkReadyMs = millis();
+    logger->println("Wi-Fi connected");
+    logger->println("Station IP address: " + WiFi.localIP().toString());
+    return true;
+}
+
+void Application::monitorStation()
+{
+    if (_networkMode != NetworkMode::Station)
+        return;
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        _stationLostSinceMs = 0;
+        return;
+    }
+
+    if (_stationLostSinceMs == 0)
+    {
+        _stationLostSinceMs = millis();
+        logger->println("Wi-Fi connection lost; waiting for recovery");
+        return;
+    }
+
+    if (millis() - _stationLostSinceMs >= WIFI_LOST_TIMEOUT_MS)
+    {
+        logger->println("Wi-Fi recovery timeout; starting AP");
+        if (!startAP("Wi-Fi connection lost"))
+            halt();
+    }
+}
+
 void Application::halt()
 {
     _blinker->attach(BLINK_SPEED_FAST, changeBuilinLedState);
     logger->println("fatal error - rebooting...");
     delay(REBOOT_DELAY);
-
-    ESP.reset();
+    ESP.restart();
 }
+
 String Application::getContentType(const String &filename)
 {
     if (filename.endsWith(".html"))
         return "text/html";
-
     else if (filename.endsWith(".css"))
         return "text/css";
-
     else if (filename.endsWith(".js"))
         return "application/javascript";
-
     else if (filename.endsWith(".ico"))
         return "image/x-icon";
-
     return HTTP_TEXT_PLAIN;
 }
+
 void Application::handleNotFound()
 {
     if (!handleFileRead(_WebServer->uri()))
-    {
         _WebServer->send(HTTP_SERVER_NOT_FOUND_, FPSTR(HTTP_TEXT_PLAIN), FPSTR(HTTP_NOT_FOUND_TEXT));
-    }
 }
+
 bool Application::handleFileRead(String path)
 {
     bool success = false;
@@ -314,7 +442,6 @@ bool Application::handleFileRead(String path)
         File file = LittleFS.open(path, "r");
         _WebServer->streamFile(file, contentType);
         file.close();
-
         logger->println(String("Sent file: ") + path);
         success = true;
     }
@@ -323,31 +450,42 @@ bool Application::handleFileRead(String path)
 
     return success;
 }
+
 void Application::handleSettingsSave()
 {
     logger->println("handle settings save");
     std::map<String, String> settingsMap;
     for (int i = 0; i < _WebServer->args(); i++)
-    {
         settingsMap[_WebServer->argName(i)] = _WebServer->arg(i);
-    }
+
     _settings->fromMapping(settingsMap);
     JSONConfig::write(FPSTR(CONFIG_FILENAME), *_settings, CONFIG_SIZE);
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_TEXT_PLAIN), FPSTR(AFTER_SAVING_MSG));
-
-    delay(REBOOT_DELAY);
-    ESP.reset();
+    delay(1000);
+    ESP.restart();
 }
+
+void Application::handleWiFiDelete()
+{
+    _settings->WiFiSSID = "";
+    _settings->WiFiPassword = "";
+    JSONConfig::write(FPSTR(CONFIG_FILENAME), *_settings, CONFIG_SIZE);
+    _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), "{\"deleted\":true,\"rebooting\":true}");
+    delay(1000);
+    ESP.restart();
+}
+
 void Application::handleGetSettings()
 {
     logger->println("handle get settings");
     String serializedData;
     DynamicJsonDocument doc(CONFIG_SIZE);
-
     _settings->serialize(doc);
+    doc[FPSTR(HTML_ID_WIFI_PASSWORD)] = _settings->WiFiPassword.isEmpty() ? "" : FPSTR(WIFI_PASSWORD_MASK);
     serializeJson(doc, serializedData);
-    _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_TEXT_PLAIN), serializedData);
+    _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), serializedData);
 }
+
 size_t Application::getDebugLogSize()
 {
     size_t size = _uartDebugLogBytes + _uartDebugBufferLen;
@@ -362,13 +500,14 @@ size_t Application::getDebugLogSize()
     }
     return size;
 }
+
 void Application::handleGetStatus()
 {
     FSInfo fsInfo;
     LittleFS.info(fsInfo);
 
     String serializedData;
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<896> doc;
     doc["uptime"] = millis() / 1000UL;
     doc["reset_reason"] = ESP.getResetReason();
     doc["uart_rx_overruns"] = uartRxOverrunCount;
@@ -380,9 +519,19 @@ void Application::handleGetStatus()
     doc["debug_log_bytes"] = getDebugLogSize();
     doc["debug_log_limit"] = _uartDebugLogLimit;
     doc["debug_dropped_records"] = _uartDebugDroppedRecords;
+    doc["network_mode"] = _networkMode == NetworkMode::Station ? "Wi-Fi client" : "Access Point";
+    doc["ap_reason"] = _networkMode == NetworkMode::AccessPoint ? _apReason : "";
+    doc["station_ssid"] = _networkMode == NetworkMode::Station ? WiFi.SSID() : "";
+    doc["station_ip"] = _networkMode == NetworkMode::Station ? WiFi.localIP().toString() : "";
+    doc["station_rssi"] = _networkMode == NetworkMode::Station && WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
+    doc["ap_ip"] = _networkMode == NetworkMode::AccessPoint ? WiFi.softAPIP().toString() : "";
+    doc["forced_ap"] = _forcedAP;
+    doc["reset_detector_ready_ms"] = _resetDetectorReadyMs;
+    doc["network_ready_ms"] = _networkReadyMs;
     serializeJson(doc, serializedData);
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), serializedData);
 }
+
 void Application::appendDebugText(const char *text)
 {
     if (!_uartDebugEnabled || !text)
@@ -407,6 +556,7 @@ void Application::appendDebugText(const char *text)
     memcpy(_uartDebugBuffer + _uartDebugBufferLen, text, length);
     _uartDebugBufferLen += length;
 }
+
 void Application::appendDebugRecord(const char *source, const uint8_t *data, size_t length)
 {
     if (!_uartDebugEnabled || !data || !length)
@@ -463,6 +613,7 @@ void Application::appendDebugRecord(const char *source, const uint8_t *data, siz
         offset += chunkLength;
     }
 }
+
 void Application::flushDebugLog(bool force)
 {
     if (!_uartDebugEnabled || !_uartDebugBufferLen)
@@ -510,6 +661,7 @@ void Application::flushDebugLog(bool force)
     }
     _uartDebugBufferLen = 0;
 }
+
 void Application::handleDebugStart()
 {
     if (_uartDebugEnabled)
@@ -543,6 +695,7 @@ void Application::handleDebugStart()
     appendDebugText("# format: seconds.millis SOURCE escaped-bytes\n");
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), "{\"enabled\":true}");
 }
+
 void Application::handleDebugStop()
 {
     if (_uartDebugEnabled)
@@ -552,6 +705,7 @@ void Application::handleDebugStop()
     }
     _WebServer->send(HTTP_SERVER_OK_, FPSTR(HTTP_APPLICATION_JSON), "{\"enabled\":false}");
 }
+
 void Application::handleTerminalClient()
 {
     if (_terminalServer->hasClient())
@@ -581,6 +735,7 @@ void Application::handleTerminalClient()
     if (tcpToSerial)
         appendDebugRecord("TX TCP", debugBuffer, tcpToSerial);
 }
+
 void Application::handleSerialInput()
 {
     size_t bufferLen = std::min((size_t)Serial.available(), STACK_MAX_SIZE);
@@ -614,10 +769,9 @@ void Application::handleSerialInput()
     }
 
     if (!_webSockServer->broadcastBIN(buffer, serialGotBytesCount))
-    {
         logger->println("websocket broadcast failed");
-    }
 }
+
 void Application::handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 {
     if (type == WStype_CONNECTED)
@@ -642,9 +796,13 @@ void Application::handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payl
         Serial.write(payload, length);
     }
 }
+
 void Application::initialize()
 {
     pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);
+    initializeResetRecovery();
+
     logger->begin(DEFAULT_BAUD_LOGGER);
     logger->println(FPSTR(WELCOME_STRING));
 
@@ -653,36 +811,53 @@ void Application::initialize()
         logger->println("failed to mount FS");
         halt();
     }
+
     JSONConfig::read(FPSTR(CONFIG_FILENAME), *_settings, CONFIG_SIZE);
     Serial.begin(_settings->serialBaud);
     Serial.swap();
     Serial.flush();
     Serial.setRxBufferSize(RX_BUFFER_SIZE);
 
-    if (startAP())
-        _blinker->attach(BLINK_SPEED_MIDDLE, changeBuilinLedState);
+    bool networkStarted = false;
+    if (_forcedAP)
+        networkStarted = startAP("Forced by triple reset");
+    else if (_settings->WiFiSSID.isEmpty() || _settings->WiFiPassword.isEmpty())
+        networkStarted = startAP("No Wi-Fi settings");
+    else if (startStation())
+        networkStarted = true;
     else
+        networkStarted = startAP("Wi-Fi connection timeout");
+
+    if (!networkStarted)
         halt();
 
-    _WebServer->on(FPSTR(HTTP_SAVE_LINK), [&]() mutable { this->handleSettingsSave(); });
+    _blinker->attach(BLINK_SPEED_MIDDLE, changeBuilinLedState);
+
+    _WebServer->on(FPSTR(HTTP_SAVE_LINK), HTTP_POST, [&]() mutable { this->handleSettingsSave(); });
     _WebServer->on(FPSTR(HTTP_CONF_LINK), [&]() mutable { this->handleGetSettings(); });
     _WebServer->on(FPSTR(HTTP_STATUS_LINK), [&]() mutable { this->handleGetStatus(); });
     _WebServer->on(FPSTR(HTTP_DEBUG_START_LINK), HTTP_POST, [&]() mutable { this->handleDebugStart(); });
     _WebServer->on(FPSTR(HTTP_DEBUG_STOP_LINK), HTTP_POST, [&]() mutable { this->handleDebugStop(); });
-    _WebServer->onNotFound([&]() mutable { handleNotFound();});
+    _WebServer->on(FPSTR(HTTP_WIFI_DELETE_LINK), HTTP_POST, [&]() mutable { this->handleWiFiDelete(); });
+    _WebServer->onNotFound([&]() mutable { handleNotFound(); });
     _WebServer->begin();
 
     _terminalServer->begin();
     _terminalServer->setNoDelay(true);
     _FTPServer->begin(FTP_LOGIN_, FTP_PASSWORD_);
     _blinker->detach();
+    digitalWrite(LED_BUILTIN, HIGH);
 
     _webSockServer->begin();
     _webSockServer->onEvent([&](uint8_t num, WStype_t type, uint8_t *payload, size_t length) mutable {
-         this->handleWebSocketEvent(num, type, payload, length); });
+        this->handleWebSocketEvent(num, type, payload, length);
+    });
 }
+
 void Application::mainloop()
 {
+    serviceResetRecoveryWindow();
+    monitorStation();
     _webSockServer->loop();
     _FTPServer->handleFTP();
     _WebServer->handleClient();
@@ -691,7 +866,5 @@ void Application::mainloop()
     flushDebugLog();
 
     if (Serial.hasOverrun())
-    {
         uartRxOverrunCount++;
-    }
 }
